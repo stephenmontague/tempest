@@ -1,0 +1,204 @@
+# .cursorrules
+# Tempest WMS MVP — Cursor Rules
+# Goal: Learn Temporal deeply while building a clean, scalable MVP.
+
+################################################################################
+# GLOBAL PRINCIPLES
+################################################################################
+
+- Temporal-first orchestration: long-running + multi-step + retryable business intent
+  MUST be expressed as Temporal Workflows, not ad-hoc chains of HTTP calls.
+- Domain services are systems of record. Temporal orchestrates intent across them.
+- Every externally-visible mutation MUST be idempotent (API, Activity, Signal).
+- Prefer explicit state machines and append-only event logs for lifecycle visibility.
+- Keep tasks small: implement one story/issue at a time; never "one-shot" the project.
+
+################################################################################
+# ARCHITECTURE BOUNDARIES (HARD RULES)
+################################################################################
+
+- OMS owns: Orders, OrderLines, Order lifecycle/status, OrderEvent (append-only).
+- IMS owns: Items, BOM/ItemComponents, InventoryBalance, Reservations, Adjustments.
+- WMS owns: Facility, Location, Waves, PickTasks, Packing, Staging.
+- SMS owns: Shipments, Parcels, Labels, Tracking updates.
+- Temporal owns: orchestration, retries, waiting, timeouts, compensation.
+
+Hard boundary:
+- No service writes another service’s tables.
+- No "shared database tables" across services.
+- Cross-service coordination occurs through Temporal Activities and/or service APIs
+  with idempotency keys.
+
+################################################################################
+# TEMPORAL-FIRST ORCHESTRATION RULES
+################################################################################
+
+WHEN to use a Workflow:
+- Any process that spans services (OMS/IMS/WMS/SMS)
+- Any process that can take > 1 request/response cycle
+- Any process requiring retries/backoff/timeouts
+- Any process involving "wait for human action" (picking, packing)
+- Any process needing compensation (release reservation, cancel shipment)
+
+WHEN NOT to use a Workflow:
+- Simple CRUD or synchronous query
+- Read-only aggregation (unless it must be consistent across time)
+
+Workflow design rules:
+- Workflow code must be deterministic (no random, no system time, no network I/O).
+- All external I/O happens in Activities.
+- Use signals for human-driven milestones:
+  - PickCompleted, PackCompleted, CancelOrder, etc.
+- Provide workflow queries for UI/status pages:
+  - getStatus(), getCurrentStep(), getBlockingReason()
+
+Activity design rules:
+- Activities MUST be idempotent and retry-safe.
+- Use DB uniqueness constraints + idempotency keys to enforce once-only effects.
+- Use explicit non-retryable exceptions for validation/illegal state transitions.
+- Always set timeouts & retry policies in ActivityOptions.
+
+Durability rule:
+- A user submission is considered "durable" only after it is written to a
+  durable backend (Temporal workflow start OR intake table).
+- UI should never assume a request succeeded without receiving a server receipt.
+
+################################################################################
+# BACKEND (SPRING BOOT) CODE STYLE & STRUCTURE
+################################################################################
+
+Java version: 21
+Spring Boot: 3.x (project standard)
+
+Package structure (per service):
+- <service>.controller
+- <service>.service
+- <service>.domain (entities + domain logic)
+- <service>.repo (Spring Data repositories)
+- <service>.dto (API request/response)
+- <service>.temporal (workflows/activities registration, implementations)
+- <service>.config
+
+Rules:
+- Controllers are thin: validate + auth + call service layer.
+- Service layer contains business logic, transactions, and idempotency checks.
+- Repositories contain persistence only (no business logic).
+- Use Flyway migrations for every schema change.
+- Add DB constraints (unique/foreign key/check) BEFORE relying on code checks.
+- Prefer constructor injection; avoid field injection.
+- Avoid circular dependencies; keep modules cohesive.
+
+Security:
+- Prefer OAuth2 Resource Server (JWT) for service endpoints.
+- Never embed secrets in code; use env vars or secret managers.
+- Enforce authorization at controller/service boundary.
+
+Testing:
+- Add tests for:
+  - idempotency (duplicate requests)
+  - retries (Activity re-execution)
+  - state machine illegal transitions
+  - basic repository mapping
+
+################################################################################
+# NEXT.JS UI + BFF RULES (VERY IMPORTANT)
+################################################################################
+
+Next.js version: 16+ (App Router) with src/ directory.
+UI is tightly object-oriented.
+
+Folder conventions:
+- src/app/ (App Router)
+- src/app/api/ (BFF route handlers)
+- src/services/ (reusable service clients, typed, single responsibility)
+- src/models/ (object-oriented models)
+- src/components/ (shadcn + custom)
+- src/lib/ (utilities: fetch wrapper, auth helpers, config)
+- src/styles/ (tailwind extensions if needed)
+
+Object-oriented rules (UI):
+- Every domain model MUST have a corresponding Object file:
+  - OrderObject.ts, ItemObject.ts, ReservationObject.ts, etc.
+- Objects encapsulate:
+  - invariants and derived properties
+  - parsing/serialization (fromJSON/toJSON)
+  - safe constructors/factories
+- Avoid passing raw JSON around UI; convert to typed Objects ASAP.
+
+BFF rules:
+- The browser MUST NOT call Temporal Cloud directly.
+- Next.js route handlers act as Backend-for-Frontend (BFF):
+  - auth/session enforcement
+  - start/query/signal workflows server-side
+  - call OMS/IMS/WMS/SMS server-side
+- All Temporal credentials stay server-side.
+- Route handlers return UI-friendly responses.
+
+Theme/UI:
+- Must use shadcn components.
+- Must support light/dark mode via ThemeProvider.
+- Tailwind used consistently; no ad-hoc inline styling unless necessary.
+
+################################################################################
+# IMPORTS, CLEAN CODE, AND CONSISTENCY
+################################################################################
+
+Imports:
+- No unused imports.
+- Prefer absolute imports with a base alias (e.g., "@/services/...").
+- Keep import blocks ordered:
+  1) external libs
+  2) internal absolute imports
+  3) relative imports
+
+Naming:
+- Use consistent naming across services and UI.
+- IDs: orderId, shipmentId, waveId, pickTaskId, requestId, workflowId.
+
+Error handling:
+- No swallowed exceptions.
+- Return structured errors from APIs.
+- Distinguish validation failures vs transient failures.
+
+Logging:
+- Include correlation IDs where relevant:
+  - orderId, workflowId, waveId, shipmentId
+- Log state transitions and activity boundaries.
+
+################################################################################
+# MVP SCOPE CONTROL (ANTI-SCOPE-CREEP)
+################################################################################
+
+MVP includes:
+- Single facility (warehouse) + optional store facility type
+- Simple wave creation
+- Pick/pack signals
+- Stub carrier + label generation
+
+MVP excludes (do not implement unless explicitly requested):
+- split shipments
+- partial fulfillment across multiple facilities
+- advanced wave optimization
+- Kafka/event streaming
+- complex carrier rate shopping
+
+################################################################################
+# CURSOR WORKFLOW (HOW TO WORK)
+################################################################################
+
+- Work from docs/planning/*.md files.
+- Implement ONE story at a time.
+- Before coding:
+  - restate the story scope in a short plan
+  - list files to create/modify
+- After coding:
+  - ensure tests run
+  - ensure formatting/lint passes
+  - ensure migrations apply cleanly
+
+If a change impacts orchestration:
+- Update docs/planning/temporal-orchestration.md first, then implement.
+
+################################################################################
+# END
+################################################################################
