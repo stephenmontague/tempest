@@ -69,8 +69,8 @@ replay_pid*
 **/.mvn/wrapper/maven-wrapper.jar
 
 # Spring Boot
-**/application-local.properties
-**/application-*.local.properties
+**/application-local.yml
+**/application-*.local.yml
 
 # Database
 *.db

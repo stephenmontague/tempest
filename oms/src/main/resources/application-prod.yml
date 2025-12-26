@@ -1,0 +1,45 @@
+# Production environment profile
+# All sensitive values MUST come from environment variables
+
+spring:
+  # Database (MUST use environment variables)
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  # JPA (stricter in prod)
+  jpa:
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+  # Security - OAuth2 Resource Server (MUST use environment variables)
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER_URI}
+          jwk-set-uri: ${JWT_JWK_SET_URI}
+
+# Custom security settings - never bypass in production
+app:
+  security:
+    dev-bypass: false
+
+# Temporal (MUST use environment variables)
+temporal:
+  namespace: ${TEMPORAL_NAMESPACE}
+  address: ${TEMPORAL_ADDRESS}
+  client:
+    cert: ${TEMPORAL_CLIENT_CERT}
+    key: ${TEMPORAL_CLIENT_KEY}
+
+# Logging
+logging:
+  level:
+    root: WARN
+    app.tempest.oms: INFO
+    org.springframework.security: WARN
+

@@ -1,0 +1,37 @@
+# Development environment profile
+
+spring:
+  # Database (use environment variables for credentials)
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/tempest_sms_dev}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  # Security - OAuth2 Resource Server (MUST use environment variables)
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER_URI}
+          jwk-set-uri: ${JWT_JWK_SET_URI}
+
+# Custom security settings - never bypass in dev/prod
+app:
+  security:
+    dev-bypass: false
+
+# Temporal (use environment variables)
+temporal:
+  namespace: ${TEMPORAL_NAMESPACE:dev}
+  address: ${TEMPORAL_ADDRESS}
+  client:
+    cert: ${TEMPORAL_CLIENT_CERT}
+    key: ${TEMPORAL_CLIENT_KEY}
+
+# Logging
+logging:
+  level:
+    app.tempest.sms: INFO
+    org.springframework.web: WARN
+    org.springframework.security: INFO
+
