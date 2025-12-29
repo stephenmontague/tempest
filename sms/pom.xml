@@ -22,6 +22,13 @@
 	</properties>
 
 	<dependencies>
+		<!-- Tempest Common -->
+		<dependency>
+			<groupId>app.tempest</groupId>
+			<artifactId>tempest-common</artifactId>
+			<version>${project.version}</version>
+		</dependency>
+
 		<!-- Web / REST -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

@@ -1,5 +1,6 @@
 package app.tempest.sms.entity;
 
+import app.tempest.common.entity.TenantAwareEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -23,13 +24,10 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Table(
-    name = "shipments",
-    indexes = {
+@Table(name = "shipments", indexes = {
         @Index(name = "idx_shipments_tenant_id", columnList = "tenant_id"),
         @Index(name = "idx_shipments_order_id", columnList = "order_id")
-    }
-)
+})
 public class Shipment extends TenantAwareEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

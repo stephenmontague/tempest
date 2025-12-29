@@ -1,8 +1,6 @@
 package app.tempest.sms.controller;
 
-import app.tempest.sms.entity.Shipment;
-import app.tempest.sms.repository.ShipmentRepository;
-import app.tempest.sms.security.SecurityUtils;
+import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +15,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
+import app.tempest.common.security.SecurityUtils;
+import app.tempest.sms.entity.Shipment;
+import app.tempest.sms.repository.ShipmentRepository;
 
 /**
  * Controller for Shipment operations.

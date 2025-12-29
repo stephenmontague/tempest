@@ -33,11 +33,60 @@ Domain services (OMS, IMS, WMS, SMS) remain systems of record.
 
 ## Workflow Inventory
 
-| Workflow                           | Purpose                               |
-| ---------------------------------- | ------------------------------------- |
-| `OrderIntakeWorkflow`              | Durable order submission & validation |
-| `OrderFulfillmentWorkflow`         | End-to-end fulfillment orchestration  |
-| `ReplenishmentWorkflow` (optional) | Inventory restock automation          |
+| Workflow                           | Owner | Purpose                                    |
+| ---------------------------------- | ----- | ------------------------------------------ |
+| `OrderIntakeWorkflow`              | OMS   | Durable order submission & validation      |
+| `WaveExecutionWorkflow`            | WMS   | Batch fulfillment of orders in a wave      |
+| `OrderFulfillmentWorkflow`         | OMS   | (Legacy) Single-order fulfillment          |
+| `ReplenishmentWorkflow` (optional) | IMS   | Inventory restock automation               |
+
+---
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           ORDER FLOW                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   Customer Order                                                            │
+│        │                                                                    │
+│        ▼                                                                    │
+│   ┌─────────────────────┐                                                   │
+│   │ OrderIntakeWorkflow │  (OMS)                                            │
+│   │  - Validate         │                                                   │
+│   │  - Create Order     │                                                   │
+│   │  - Mark AWAITING_   │                                                   │
+│   │    WAVE             │                                                   │
+│   └─────────┬───────────┘                                                   │
+│             │                                                               │
+│             ▼                                                               │
+│   ┌─────────────────────┐                                                   │
+│   │  Orders Queue       │  Status: AWAITING_WAVE                            │
+│   │  (OMS Database)     │                                                   │
+│   └─────────┬───────────┘                                                   │
+│             │                                                               │
+│             │  Warehouse Manager creates wave                               │
+│             ▼                                                               │
+│   ┌─────────────────────┐                                                   │
+│   │  WaveService        │  (WMS - Spring @Service)                          │
+│   │  - createWave()     │  CRUD only, no workflow                           │
+│   │  - releaseWave()    │  Starts WaveExecutionWorkflow                     │
+│   └─────────┬───────────┘                                                   │
+│             │                                                               │
+│             ▼                                                               │
+│   ┌─────────────────────┐                                                   │
+│   │WaveExecutionWorkflow│  (WMS)                                            │
+│   │  - Allocate all     │                                                   │
+│   │  - Create picks     │                                                   │
+│   │  - Wait for picks   │◄─── Signal: allPicksCompleted                     │
+│   │  - Consume inv      │                                                   │
+│   │  - Wait for packs   │◄─── Signal: allPacksCompleted                     │
+│   │  - Ship all orders  │                                                   │
+│   └─────────────────────┘                                                   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -49,11 +98,14 @@ Ensure an order submission is **never lost**, even if OMS is down.
 
 This workflow represents **durable intent to create an order**.
 
+Orders complete intake in `AWAITING_WAVE` status, ready for wave planning.
+
 ---
 
 ### Workflow Identity
 
 -    **Workflow ID:** `order-intake-{requestId}`
+-    **Task Queue:** `oms-tasks`
 -    **Start Condition:** API/BFF receives order submission
 -    **Retry Policy:** Infinite retry (bounded by workflow timeout)
 
@@ -62,7 +114,7 @@ This workflow represents **durable intent to create an order**.
 ### Inputs
 
 -    `requestId` (idempotency key)
--    `OrderIntakeRequest` (validated DTO)
+-    `OrderIntakeRequest` (validated DTO with facilityId)
 
 ---
 
@@ -80,28 +132,25 @@ This workflow represents **durable intent to create an order**.
      - Owner: OMS
      - Retry: yes (OMS may be down)
 
-3. **Emit Order Created Event**
+3. **Mark Order Awaiting Wave**
 
-     - Activity: `EmitOrderEvent`
+     - Activity: `MarkOrderAwaitingWave`
      - Owner: OMS
+     - Sets order status to `AWAITING_WAVE`
 
-4. **Start Fulfillment Workflow**
-
-     - Child Workflow: `OrderFulfillmentWorkflow`
-     - Workflow ID: `order-fulfillment-{orderId}`
-
-5. **Complete**
+4. **Complete**
      - Order intake intent satisfied
+     - Order is now eligible for wave planning
 
 ---
 
 ### Activities Used
 
-| Activity       | Service |
-| -------------- | ------- |
-| ValidateOrder  | OMS     |
-| CreateOrder    | OMS     |
-| EmitOrderEvent | OMS     |
+| Activity              | Service |
+| --------------------- | ------- |
+| ValidateOrder         | OMS     |
+| CreateOrder           | OMS     |
+| MarkOrderAwaitingWave | OMS     |
 
 ---
 
@@ -117,109 +166,118 @@ This workflow represents **durable intent to create an order**.
 
 ### Queries
 
--    `getStatus()` → RECEIVED / VALIDATED / CREATED / FAILED
+-    `getStatus()` → RECEIVED / VALIDATING / VALIDATED / CREATING / CREATED / AWAITING_WAVE
 
 ---
 
-## Workflow 2 — OrderFulfillmentWorkflow
+## Workflow 2 — WaveExecutionWorkflow (Primary Fulfillment)
 
 ### Purpose
 
-Coordinate **inventory allocation, warehouse execution, and shipping**
-into a single durable business process.
+Coordinate **batch fulfillment of orders in a wave** through inventory allocation,
+warehouse execution, and shipping.
+
+This is the **primary fulfillment workflow** for the wave-driven architecture.
 
 ---
 
 ### Workflow Identity
 
--    **Workflow ID:** `order-fulfillment-{orderId}`
--    **Start Condition:** Order created successfully
+-    **Workflow ID:** `wave-execution-{waveId}`
+-    **Task Queue:** `wms-tasks`
+-    **Start Condition:** Warehouse manager releases a wave
 -    **Timeout:** Long-running (hours/days)
 
 ---
 
 ### Inputs
 
--    `orderId`
+-    `waveId`
+-    `facilityId`
+-    `waveNumber`
+-    `orders` (list of WaveOrderDto with order lines and ship-to addresses)
 
 ---
 
 ### Workflow Steps (Happy Path)
 
-1. **Allocate Inventory**
+1. **Allocate Inventory (all orders)**
 
-     - Activity: `AllocateInventory`
+     - Activity: `AllocateInventory` (per order line)
      - Owner: IMS
      - Handles BOM expansion if needed
 
-2. **Mark Order Reserved**
+2. **Mark Orders Reserved**
 
-     - Activity: `MarkOrderReserved`
+     - Activity: `MarkOrderReserved` (per order)
      - Owner: OMS
 
-3. **Create Pick Wave**
+3. **Create Pick Tasks**
 
-     - Activity: `CreatePickWave`
+     - Activity: `CreatePickWave` (per order)
      - Owner: WMS
 
-4. **Wait for Pick Completion**
+4. **Wait for All Picks**
 
-     - Signal: `PickCompleted`
-     - Owner: WMS
+     - Signal: `allPicksCompleted`
+     - Sent by: WMS (via API when pickers finish)
 
-5. **Consume Inventory**
+5. **Consume Inventory (all orders)**
 
-     - Activity: `ConsumeInventory`
+     - Activity: `ConsumeInventory` (per order line)
      - Owner: IMS
 
-6. **Pack Order**
+6. **Wait for All Packs**
 
-     - Signal: `PackCompleted`
-     - Owner: WMS
+     - Signal: `allPacksCompleted`
+     - Sent by: WMS (via API when packers finish)
 
-7. **Create Shipment**
+7. **Create Shipments (all orders)**
 
-     - Activity: `CreateShipment`
+     - Activity: `CreateShipment` (per order)
      - Owner: SMS
 
-8. **Generate Shipping Label**
+8. **Generate Shipping Labels**
 
-     - Activity: `GenerateShippingLabel`
+     - Activity: `GenerateShippingLabel` (per order)
      - Owner: SMS
 
-9. **Confirm Shipment**
+9. **Confirm Shipments**
 
-     - Activity: `ConfirmShipment`
+     - Activity: `ConfirmShipment` (per order)
      - Owner: SMS
 
-10. **Mark Order Shipped**
-     - Activity: `MarkOrderShipped`
+10. **Mark Orders Shipped**
+     - Activity: `MarkOrderShipped` (per order)
      - Owner: OMS
 
 ---
 
 ### Activities Used
 
-| Activity              | Service |
-| --------------------- | ------- |
-| AllocateInventory     | IMS     |
-| ConsumeInventory      | IMS     |
-| MarkOrderReserved     | OMS     |
-| MarkOrderShipped      | OMS     |
-| CreatePickWave        | WMS     |
-| CreateShipment        | SMS     |
-| GenerateShippingLabel | SMS     |
-| ConfirmShipment       | SMS     |
+| Activity              | Service | Task Queue  |
+| --------------------- | ------- | ----------- |
+| AllocateInventory     | IMS     | ims-tasks   |
+| ConsumeInventory      | IMS     | ims-tasks   |
+| ReleaseInventory      | IMS     | ims-tasks   |
+| MarkOrderReserved     | OMS     | oms-tasks   |
+| MarkOrderShipped      | OMS     | oms-tasks   |
+| CreatePickWave        | WMS     | wms-tasks   |
+| CreateShipment        | SMS     | sms-tasks   |
+| GenerateShippingLabel | SMS     | sms-tasks   |
+| ConfirmShipment       | SMS     | sms-tasks   |
 
 ---
 
 ### Signals
 
-| Signal        | Sent By     | Meaning             |
-| ------------- | ----------- | ------------------- |
-| PickCompleted | WMS         | All pick tasks done |
-| PackCompleted | WMS         | Packing complete    |
-| CancelOrder   | OMS / Admin | Abort fulfillment   |
+| Signal             | Sent By     | Meaning                        |
+| ------------------ | ----------- | ------------------------------ |
+| allPicksCompleted  | WMS         | All pick tasks in wave done    |
+| allPacksCompleted  | WMS         | All packing in wave complete   |
+| orderPickCompleted | WMS         | Single order's picks done      |
+| orderPackCompleted | WMS         | Single order's packing done    |
+| cancelWave         | WMS / Admin | Abort wave, release inventory  |
 
 ---
 
@@ -227,18 +285,73 @@ into a single durable business process.
 
 | Scenario                   | Action                              |
 | -------------------------- | ----------------------------------- |
-| Inventory allocation fails | Mark order FAILED                   |
+| Inventory allocation fails | Mark order FAILED, continue others  |
 | Pick never completes       | Timeout → release inventory         |
-| Shipment fails             | Retry label or fail order           |
-| Order cancelled            | Release inventory + cancel shipment |
+| Shipment fails             | Mark order FAILED, continue others  |
+| Wave cancelled             | Release all inventory               |
 
 ---
 
 ### Queries
 
--    `getFulfillmentStatus()`
+-    `getWaveStatus()` → Full status with per-order tracking
 -    `getCurrentStep()`
 -    `getBlockingReason()`
+
+---
+
+## Workflow 3 — OrderFulfillmentWorkflow (Legacy/Express)
+
+### Purpose
+
+Single-order fulfillment workflow. Retained for:
+- Express/priority orders that bypass wave planning
+- Backward compatibility during migration
+
+**Note:** For standard fulfillment, use `WaveExecutionWorkflow` instead.
+
+---
+
+### Workflow Identity
+
+-    **Workflow ID:** `order-fulfillment-{orderId}`
+-    **Task Queue:** `oms-tasks`
+-    **Start Condition:** Explicit start for express orders
+-    **Timeout:** Long-running (hours/days)
+
+---
+
+## Wave Planning (Not a Workflow)
+
+Wave creation and planning is handled by `WaveService` in WMS.
+This is **not a Temporal workflow** because it's simple CRUD.
+
+### WaveService Operations
+
+| Method         | Type | Description                                |
+| -------------- | ---- | ------------------------------------------ |
+| createWave()   | CRUD | Create wave with order IDs                 |
+| releaseWave()  | CRUD + Workflow | Starts WaveExecutionWorkflow    |
+| cancelWave()   | CRUD + Signal | Signals workflow cancellation     |
+| getWave()      | CRUD | Get wave details                           |
+
+### Wave States
+
+```
+CREATED → RELEASED → IN_PROGRESS → COMPLETED
+                 ↓
+            CANCELLED
+```
+
+---
+
+## Order Status Flow
+
+```
+CREATED → AWAITING_WAVE → RESERVED → PICKING → PICKED → PACKING → SHIPPED
+                    ↓                                        ↓
+               CANCELLED                                  FAILED
+```
 
 ---
 
@@ -256,6 +369,7 @@ into a single durable business process.
 
 -    Prefer **waiting** over failing
 -    Fail only when intent is invalid or explicitly cancelled
+-    Per-order failures don't fail the wave
 
 ---
 
@@ -277,6 +391,7 @@ into a single durable business process.
 | Order lifecycle     | OMS      |
 | Inventory truth     | IMS      |
 | Warehouse execution | WMS      |
+| Wave orchestration  | WMS      |
 | Shipment lifecycle  | SMS      |
 | Orchestration       | Temporal |
 
@@ -289,21 +404,36 @@ into a single durable business process.
 -    Multi-warehouse routing
 -    Carrier selection optimization
 -    Event streaming (Kafka)
+-    Advanced wave optimization algorithms
 
 These are intentional omissions.
+
+---
+
+## API Endpoints (WMS)
+
+| Endpoint                         | Method | Description                    |
+| -------------------------------- | ------ | ------------------------------ |
+| /api/waves                       | POST   | Create a new wave              |
+| /api/waves/{id}                  | GET    | Get wave details               |
+| /api/waves/{id}/release          | POST   | Release wave (start workflow)  |
+| /api/waves/{id}                  | DELETE | Cancel wave                    |
+| /api/waves/{id}/picks-completed  | POST   | Signal all picks done          |
+| /api/waves/{id}/packs-completed  | POST   | Signal all packs done          |
 
 ---
 
 ## Recommended Implementation Order
 
 1. Implement **IMS Activities**
-2. Implement **OMS Activities**
+2. Implement **OMS Activities** (including MarkOrderAwaitingWave)
 3. Implement **WMS Activities**
 4. Implement **SMS Activities**
-5. Implement `OrderIntakeWorkflow`
-6. Implement `OrderFulfillmentWorkflow`
-7. Add signals and queries
-8. Harden retries and failure paths
+5. Implement `OrderIntakeWorkflow` (stops at AWAITING_WAVE)
+6. Implement `WaveExecutionWorkflow`
+7. Implement `WaveService` and `WaveController`
+8. Add signals and queries
+9. Harden retries and failure paths
 
 ---
 

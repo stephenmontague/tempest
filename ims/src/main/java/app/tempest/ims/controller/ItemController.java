@@ -2,7 +2,7 @@ package app.tempest.ims.controller;
 
 import app.tempest.ims.entity.Item;
 import app.tempest.ims.repository.ItemRepository;
-import app.tempest.ims.security.SecurityUtils;
+import app.tempest.common.security.SecurityUtils;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
