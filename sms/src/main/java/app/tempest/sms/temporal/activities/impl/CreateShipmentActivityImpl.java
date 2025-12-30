@@ -1,36 +1,62 @@
 package app.tempest.sms.temporal.activities.impl;
 
+import java.util.List;
+
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import app.tempest.common.dto.requests.CreateShipmentRequest;
 import app.tempest.common.dto.results.CreateShipmentResult;
+import app.tempest.sms.entity.Shipment;
+import app.tempest.sms.repository.ShipmentRepository;
 import app.tempest.sms.temporal.activities.CreateShipmentActivity;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class CreateShipmentActivityImpl implements CreateShipmentActivity {
 
+     private final ShipmentRepository shipmentRepository;
+
      @Override
+     @Transactional
      public CreateShipmentResult createShipment(CreateShipmentRequest request) {
-          log.info("Creating shipment - orderId: {}, carrier: {}, serviceLevel: {}",
-                    request.getOrderId(), request.getCarrier(), request.getServiceLevel());
+          log.info("Creating shipment - tenantId: {}, orderId: {}, carrier: {}, serviceLevel: {}",
+                    request.getTenantId(), request.getOrderId(), request.getCarrier(), request.getServiceLevel());
 
-          // Stub implementation for now
-          // TODO: Implement actual shipment creation logic
-          // 1. Check if shipment for orderId already exists (idempotency)
-          // 2. If exists, return existing shipment
-          // 3. Create Shipment entity with status CREATED
-          // 4. Return shipment details
+          // Idempotency check: return existing shipment if one exists for this order
+          List<Shipment> existingShipments = shipmentRepository.findByTenantIdAndOrderId(
+                    request.getTenantId(), request.getOrderId());
+          
+          if (!existingShipments.isEmpty()) {
+               Shipment existing = existingShipments.get(0);
+               log.info("Shipment already exists - shipmentId: {}, orderId: {}", existing.getId(), request.getOrderId());
+               return CreateShipmentResult.builder()
+                         .shipmentId(existing.getId())
+                         .status(existing.getStatus())
+                         .alreadyExisted(true)
+                         .build();
+          }
 
-          // Simulate shipment ID generation
-          Long shipmentId = System.currentTimeMillis();
+          // Create new shipment
+          Shipment shipment = Shipment.builder()
+                    .orderId(request.getOrderId())
+                    .facilityId(request.getFacilityId())
+                    .carrier(request.getCarrier())
+                    .serviceLevel(request.getServiceLevel())
+                    .status("CREATED")
+                    .build();
+          shipment.setTenantId(request.getTenantId());
 
-          log.info("Shipment created - shipmentId: {}, orderId: {}", shipmentId, request.getOrderId());
+          Shipment saved = shipmentRepository.save(shipment);
+          log.info("Shipment created - shipmentId: {}, orderId: {}, tenantId: {}", 
+                    saved.getId(), request.getOrderId(), request.getTenantId());
 
           return CreateShipmentResult.builder()
-                    .shipmentId(shipmentId)
-                    .status("CREATED")
+                    .shipmentId(saved.getId())
+                    .status(saved.getStatus())
                     .alreadyExisted(false)
                     .build();
      }

@@ -65,6 +65,21 @@ public class ItemController {
     }
 
     /**
+     * Get a specific item by SKU.
+     * Accessible by ADMIN, MANAGER, WAREHOUSE_ASSOCIATE, and INTEGRATION roles.
+     */
+    @GetMapping("/sku/{sku}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'WAREHOUSE_ASSOCIATE', 'INTEGRATION')")
+    public ResponseEntity<Item> getItemBySku(@PathVariable String sku, @AuthenticationPrincipal Jwt jwt) {
+        String tenantId = SecurityUtils.requireTenantId(jwt);
+        log.debug("Fetching item with SKU {} for tenant: {}", sku, tenantId);
+
+        return itemRepository.findByTenantIdAndSku(tenantId, sku)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
      * Create a new item.
      * Accessible by ADMIN and MANAGER roles only.
      * tenantId is set from JWT, not from request body.

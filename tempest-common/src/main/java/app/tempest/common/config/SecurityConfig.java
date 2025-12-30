@@ -1,136 +1,87 @@
 package app.tempest.common.config;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.stream.Collectors;
-
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.convert.converter.Converter;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
-import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.JwtDecoders;
-import org.springframework.security.oauth2.jwt.JwtValidators;
-import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.util.StringUtils;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * Security configuration for Tempest services.
- * Configures OAuth2 Resource Server with JWT validation including:
- * - Issuer validation
- * - Audience validation
- * - Tenant ID claim validation
- * - Role extraction from JWT claims
+ * Currently configured with no authentication for demo/development purposes.
+ * Injects a mock JWT with demo tenant and admin role for all requests.
  */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
-    private static final String CLAIM_ROLES = "roles";
-
-    @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri:}")
-    private String issuerUri;
-
-    @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri:}")
-    private String jwkSetUri;
-
-    @Value("${app.security.audience:tempest-api}")
-    private String audience;
-
-    @Value("${app.security.dev-bypass:false}")
-    private boolean devBypass;
+    private static final String DEMO_TENANT_ID = "demo-tenant";
+    private static final String DEMO_USER_ID = "demo-user";
+    private static final List<String> DEMO_ROLES = List.of("ADMIN", "MANAGER", "WAREHOUSE_ASSOCIATE", "INTEGRATION");
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health").permitAll()
-                        .requestMatchers("/actuator/info").permitAll()
-                        .anyRequest().authenticated());
-
-        // Configure OAuth2 resource server if not in dev bypass mode
-        if (devBypass) {
-            // In dev bypass mode, permit all requests (for local development only)
-            http.authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
-        } else if (StringUtils.hasText(jwkSetUri) || StringUtils.hasText(issuerUri)) {
-            http.oauth2ResourceServer(oauth2 -> oauth2
-                    .jwt(jwt -> jwt
-                            .decoder(jwtDecoder())
-                            .jwtAuthenticationConverter(jwtAuthenticationConverter())));
-        }
-
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+                .addFilterBefore(new DemoAuthenticationFilter(), BasicAuthenticationFilter.class);
         return http.build();
     }
 
-    @Bean
-    public JwtDecoder jwtDecoder() {
-        NimbusJwtDecoder jwtDecoder;
-
-        if (StringUtils.hasText(jwkSetUri)) {
-            jwtDecoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
-        } else if (StringUtils.hasText(issuerUri)) {
-            jwtDecoder = (NimbusJwtDecoder) JwtDecoders.fromIssuerLocation(issuerUri);
-        } else {
-            throw new IllegalStateException(
-                    "Either JWT issuer-uri or jwk-set-uri must be configured when not in dev-bypass mode");
-        }
-
-        // Add custom validators
-        OAuth2TokenValidator<Jwt> defaultValidator = JwtValidators.createDefaultWithIssuer(issuerUri);
-        OAuth2TokenValidator<Jwt> audienceValidator = new JwtAudienceValidator(audience);
-        OAuth2TokenValidator<Jwt> tenantValidator = new JwtTenantValidator();
-
-        OAuth2TokenValidator<Jwt> combinedValidator = new DelegatingOAuth2TokenValidator<>(
-                defaultValidator,
-                audienceValidator,
-                tenantValidator);
-
-        jwtDecoder.setJwtValidator(combinedValidator);
-        return jwtDecoder;
-    }
-
     /**
-     * Converts JWT claims to Spring Security authorities.
-     * Extracts roles from the 'roles' claim and converts them to GrantedAuthority
-     * objects.
+     * Filter that injects a mock JWT authentication for demo/development mode.
+     * This allows controllers that expect JWT authentication to work without
+     * an actual OAuth2 provider.
      */
-    @Bean
-    public JwtAuthenticationConverter jwtAuthenticationConverter() {
-        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter(new RolesClaimConverter());
-        return converter;
-    }
-
-    /**
-     * Converter that extracts roles from the JWT 'roles' claim.
-     */
-    private static class RolesClaimConverter implements Converter<Jwt, Collection<GrantedAuthority>> {
+    private static class DemoAuthenticationFilter extends OncePerRequestFilter {
 
         @Override
-        public Collection<GrantedAuthority> convert(Jwt jwt) {
-            Object rolesObj = jwt.getClaim(CLAIM_ROLES);
-            if (rolesObj instanceof List<?> rolesList) {
-                return rolesList.stream()
-                        .filter(String.class::isInstance)
-                        .map(String.class::cast)
+        protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+                throws ServletException, IOException {
+            
+            // Only inject demo auth if no authentication is already present
+            if (SecurityContextHolder.getContext().getAuthentication() == null) {
+                // Create a mock JWT with demo claims
+                Jwt mockJwt = new Jwt(
+                        "demo-token",
+                        Instant.now(),
+                        Instant.now().plusSeconds(3600),
+                        Map.of("alg", "none"),
+                        Map.of(
+                                "sub", DEMO_USER_ID,
+                                "tenant_id", DEMO_TENANT_ID,
+                                "roles", DEMO_ROLES
+                        )
+                );
+
+                // Create authorities from roles
+                List<SimpleGrantedAuthority> authorities = DEMO_ROLES.stream()
                         .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
-                        .collect(Collectors.toList());
+                        .toList();
+
+                // Create and set the authentication
+                JwtAuthenticationToken authentication = new JwtAuthenticationToken(mockJwt, authorities);
+                SecurityContextHolder.getContext().setAuthentication(authentication);
             }
-            return Collections.emptyList();
+
+            filterChain.doFilter(request, response);
         }
     }
 }
-

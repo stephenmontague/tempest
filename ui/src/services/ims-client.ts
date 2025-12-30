@@ -39,31 +39,63 @@ export class ImsClient extends BaseServiceClient {
   }
 
   /**
-   * Get all items for the authenticated tenant.
+   * Get all items.
    */
-  async getItems(accessToken: string): Promise<Item[]> {
-    return this.get<Item[]>("/items", accessToken);
+  async getItems(): Promise<Item[]> {
+    return this.get<Item[]>("/items");
+  }
+
+  /**
+   * Get active items only.
+   */
+  async getActiveItems(): Promise<Item[]> {
+    return this.get<Item[]>("/items?active=true");
   }
 
   /**
    * Get a specific item by ID.
    */
-  async getItem(id: number, accessToken: string): Promise<Item> {
-    return this.get<Item>(`/items/${id}`, accessToken);
+  async getItem(id: number): Promise<Item> {
+    return this.get<Item>(`/items/${id}`);
+  }
+
+  /**
+   * Get an item by SKU.
+   */
+  async getItemBySku(sku: string): Promise<Item | null> {
+    try {
+      return await this.get<Item>(`/items/sku/${encodeURIComponent(sku)}`);
+    } catch {
+      return null;
+    }
   }
 
   /**
    * Create a new item.
    */
-  async createItem(
-    request: CreateItemRequest,
-    accessToken: string
-  ): Promise<Item> {
-    return this.post<Item, CreateItemRequest>(
-      "/items",
-      accessToken,
-      request
-    );
+  async createItem(request: CreateItemRequest): Promise<Item> {
+    return this.post<Item, CreateItemRequest>("/items", request);
+  }
+
+  /**
+   * Update an existing item.
+   */
+  async updateItem(id: number, request: Partial<CreateItemRequest>): Promise<Item> {
+    return this.put<Item, Partial<CreateItemRequest>>(`/items/${id}`, request);
+  }
+
+  /**
+   * Delete an item (soft delete - set inactive).
+   */
+  async deleteItem(id: number): Promise<void> {
+    return this.delete<void>(`/items/${id}`);
+  }
+
+  /**
+   * Get item count for dashboard.
+   */
+  async getItemCount(): Promise<{ total: number; active: number }> {
+    return this.get<{ total: number; active: number }>("/items/count");
   }
 }
 
@@ -80,4 +112,3 @@ export function getImsClient(): ImsClient {
   }
   return imsClient;
 }
-

@@ -18,7 +18,10 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class OrderIntakeWorkflowRequest {
      private String requestId;
+     private String tenantId;
+     private String userId;
      private String externalOrderId;
+     private String customerEmail;
      private String channel;
      private String priority;
      private Long facilityId;

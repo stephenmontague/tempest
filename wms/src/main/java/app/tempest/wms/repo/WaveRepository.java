@@ -22,5 +22,7 @@ public interface WaveRepository extends JpaRepository<Wave, Long> {
 
      List<Wave> findByTenantIdAndFacilityId(String tenantId, Long facilityId);
 
+     List<Wave> findByTenantId(String tenantId);
+
      boolean existsByTenantIdAndWaveNumber(String tenantId, String waveNumber);
 }

@@ -1,0 +1,207 @@
+# =============================================================================
+# Tempest WMS - Docker Compose for Demo
+# =============================================================================
+# This setup is optimized for demonstrating Temporal's orchestration and
+# resilience capabilities. Services can be killed and restarted individually
+# to show how Temporal handles failures.
+#
+# Usage:
+#   ./demo.sh up      - Start all services
+#   ./demo.sh kill X  - Kill a specific service (ims, oms, wms, sms)
+#   ./demo.sh start X - Restart a killed service
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Infrastructure
+  # ---------------------------------------------------------------------------
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: tempest-postgres
+    environment:
+      POSTGRES_USER: tempest
+      POSTGRES_PASSWORD: tempest
+      POSTGRES_DB: tempest
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tempest"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: "no"
+
+  temporal:
+    image: temporalio/auto-setup:latest
+    container_name: tempest-temporal
+    ports:
+      - "7233:7233"
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=tempest
+      - POSTGRES_PWD=tempest
+      - POSTGRES_SEEDS=postgres
+      - SKIP_SCHEMA_SETUP=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  temporal-ui:
+    image: temporalio/ui:latest
+    container_name: tempest-temporal-ui
+    ports:
+      - "8080:8080"
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    depends_on:
+      - temporal
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Backend Services
+  # ---------------------------------------------------------------------------
+
+  ims:
+    build:
+      context: ./ims
+      dockerfile: Dockerfile
+    container_name: tempest-ims
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_USERNAME: tempest
+      DB_PASSWORD: tempest
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_ims
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: default
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: "no"
+
+  oms:
+    build:
+      context: ./oms
+      dockerfile: Dockerfile
+    container_name: tempest-oms
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_USERNAME: tempest
+      DB_PASSWORD: tempest
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_oms
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: default
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8082/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: "no"
+
+  wms:
+    build:
+      context: ./wms
+      dockerfile: Dockerfile
+    container_name: tempest-wms
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_USERNAME: tempest
+      DB_PASSWORD: tempest
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_wms
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: default
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8083/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: "no"
+
+  sms:
+    build:
+      context: ./sms
+      dockerfile: Dockerfile
+    container_name: tempest-sms
+    ports:
+      - "8084:8084"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_USERNAME: tempest
+      DB_PASSWORD: tempest
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_sms
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: default
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8084/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Frontend
+  # ---------------------------------------------------------------------------
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    container_name: tempest-ui
+    ports:
+      - "3001:3000"
+    environment:
+      NODE_ENV: production
+      AUTH_DEV_BYPASS: "true"
+      AUTH_SECRET: dev-secret-for-docker-demo
+      OMS_URL: http://oms:8082
+      IMS_URL: http://ims:8081
+      WMS_URL: http://wms:8083
+      SMS_URL: http://sms:8084
+    depends_on:
+      - ims
+      - oms
+      - wms
+      - sms
+    restart: "no"
+
+volumes:
+  postgres_data:
+

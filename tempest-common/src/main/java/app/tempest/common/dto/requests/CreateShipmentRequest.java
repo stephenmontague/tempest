@@ -14,6 +14,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CreateShipmentRequest {
+     private String tenantId;
      private Long orderId;
      private Long facilityId;
      private String carrier;

@@ -16,6 +16,7 @@ export interface Order {
   shippingState?: string;
   shippingPostalCode?: string;
   shippingCountry?: string;
+  workflowId?: string;
   createdByUserId?: string;
   updatedByUserId?: string;
   createdAt: string;
@@ -59,6 +60,25 @@ export interface CreateOrderLineRequest {
 }
 
 /**
+ * Response from creating an order.
+ * Returns the created order info after workflow completes.
+ */
+export interface CreateOrderResponse {
+  orderId: number;
+  status: string;
+  externalOrderId: string;
+}
+
+/**
+ * Workflow status response.
+ */
+export interface WorkflowStatus {
+  status: string;
+  currentStep?: string;
+  blockingReason?: string | null;
+}
+
+/**
  * OMS (Order Management System) service client.
  * Used server-side only - never expose to browser.
  */
@@ -72,38 +92,68 @@ export class OmsClient extends BaseServiceClient {
   }
 
   /**
-   * Get all orders for the authenticated tenant.
+   * Get all orders.
    */
-  async getOrders(accessToken: string): Promise<Order[]> {
-    return this.get<Order[]>("/orders", accessToken);
+  async getOrders(): Promise<Order[]> {
+    return this.get<Order[]>("/orders");
+  }
+
+  /**
+   * Get orders by status.
+   */
+  async getOrdersByStatus(status: string): Promise<Order[]> {
+    return this.get<Order[]>(`/orders?status=${encodeURIComponent(status)}`);
+  }
+
+  /**
+   * Get orders containing a specific SKU.
+   */
+  async getOrdersBySku(sku: string): Promise<Order[]> {
+    return this.get<Order[]>(`/orders?sku=${encodeURIComponent(sku)}`);
   }
 
   /**
    * Get a specific order by ID.
    */
-  async getOrder(id: number, accessToken: string): Promise<Order> {
-    return this.get<Order>(`/orders/${id}`, accessToken);
+  async getOrder(id: number): Promise<Order> {
+    return this.get<Order>(`/orders/${id}`);
   }
 
   /**
    * Create a new order.
+   * This triggers the OrderIntakeWorkflow.
+   * Returns workflow info since order creation is async.
    */
-  async createOrder(
-    request: CreateOrderRequest,
-    accessToken: string
-  ): Promise<Order> {
-    return this.post<Order, CreateOrderRequest>(
-      "/orders",
-      accessToken,
-      request
-    );
+  async createOrder(request: CreateOrderRequest): Promise<CreateOrderResponse> {
+    return this.post<CreateOrderResponse, CreateOrderRequest>("/orders", request);
   }
 
   /**
    * Get order lines for an order.
    */
-  async getOrderLines(orderId: number, accessToken: string): Promise<OrderLine[]> {
-    return this.get<OrderLine[]>(`/orders/${orderId}/lines`, accessToken);
+  async getOrderLines(orderId: number): Promise<OrderLine[]> {
+    return this.get<OrderLine[]>(`/orders/${orderId}/lines`);
+  }
+
+  /**
+   * Get workflow status for an order.
+   */
+  async getOrderWorkflowStatus(workflowId: string): Promise<WorkflowStatus> {
+    return this.get<WorkflowStatus>(`/workflows/${workflowId}/status`);
+  }
+
+  /**
+   * Cancel an order.
+   */
+  async cancelOrder(orderId: number, reason: string): Promise<void> {
+    return this.post<void, { reason: string }>(`/orders/${orderId}/cancel`, { reason });
+  }
+
+  /**
+   * Get order counts by status for dashboard.
+   */
+  async getOrderCounts(): Promise<Record<string, number>> {
+    return this.get<Record<string, number>>("/orders/counts");
   }
 }
 
@@ -119,4 +169,3 @@ export function getOmsClient(): OmsClient {
   }
   return omsClient;
 }
-

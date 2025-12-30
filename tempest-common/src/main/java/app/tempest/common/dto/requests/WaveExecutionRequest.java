@@ -16,6 +16,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class WaveExecutionRequest {
+     private String tenantId;
      private Long waveId;
      private Long facilityId;
      private String waveNumber;

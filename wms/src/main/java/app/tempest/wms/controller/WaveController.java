@@ -17,7 +17,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import app.tempest.wms.dto.CreateWaveRequest;
 import app.tempest.wms.dto.ReleaseWaveRequest;
+import app.tempest.wms.dto.SelectRateRequest;
+import app.tempest.wms.dto.ShipmentStatesResponse;
 import app.tempest.wms.dto.WaveResponse;
+import app.tempest.wms.dto.WorkflowStatusResponse;
 import app.tempest.wms.entity.Wave.WaveStatus;
 import app.tempest.wms.service.WaveService;
 import jakarta.validation.Valid;
@@ -80,7 +83,7 @@ public class WaveController {
                waves = waveService.getWavesByFacility(tenantId, facilityId);
           } else {
                // Return all waves for tenant (could add pagination)
-               waves = waveService.getWavesByStatus(tenantId, WaveStatus.CREATED);
+               waves = waveService.getAllWaves(tenantId);
           }
 
           return ResponseEntity.ok(waves);
@@ -146,6 +149,85 @@ public class WaveController {
           log.info("Signaling packs completed - tenantId: {}, waveId: {}", tenantId, waveId);
 
           waveService.signalPacksCompleted(tenantId, waveId);
+          return ResponseEntity.ok().build();
+     }
+
+     /**
+      * Get the workflow status for a wave.
+      */
+     @GetMapping("/{waveId}/status")
+     public ResponseEntity<WorkflowStatusResponse> getWorkflowStatus(
+               @AuthenticationPrincipal Jwt jwt,
+               @PathVariable Long waveId) {
+
+          String tenantId = extractTenantId(jwt);
+          WorkflowStatusResponse status = waveService.getWorkflowStatus(tenantId, waveId);
+          return ResponseEntity.ok(status);
+     }
+
+     /**
+      * Get shipment states for a wave.
+      */
+     @GetMapping("/{waveId}/shipments")
+     public ResponseEntity<ShipmentStatesResponse> getShipmentStates(
+               @AuthenticationPrincipal Jwt jwt,
+               @PathVariable Long waveId) {
+
+          String tenantId = extractTenantId(jwt);
+          log.info("Getting shipment states - tenantId: {}, waveId: {}", tenantId, waveId);
+
+          ShipmentStatesResponse response = waveService.getShipmentStates(tenantId, waveId);
+          return ResponseEntity.ok(response);
+     }
+
+     /**
+      * Signal rate selection for a shipment in a wave.
+      */
+     @PostMapping("/{waveId}/shipments/{shipmentId}/select-rate")
+     public ResponseEntity<Void> signalRateSelected(
+               @AuthenticationPrincipal Jwt jwt,
+               @PathVariable Long waveId,
+               @PathVariable Long shipmentId,
+               @RequestBody SelectRateRequest request) {
+
+          String tenantId = extractTenantId(jwt);
+          log.info("Signaling rate selected - tenantId: {}, waveId: {}, shipmentId: {}, carrier: {}", 
+                    tenantId, waveId, shipmentId, request.getCarrier());
+
+          waveService.signalRateSelected(tenantId, waveId, shipmentId, request.getCarrier(), request.getServiceLevel());
+          return ResponseEntity.ok().build();
+     }
+
+     /**
+      * Signal to print label for a shipment in a wave.
+      */
+     @PostMapping("/{waveId}/shipments/{shipmentId}/print-label")
+     public ResponseEntity<Void> signalPrintLabel(
+               @AuthenticationPrincipal Jwt jwt,
+               @PathVariable Long waveId,
+               @PathVariable Long shipmentId) {
+
+          String tenantId = extractTenantId(jwt);
+          log.info("Signaling print label - tenantId: {}, waveId: {}, shipmentId: {}", tenantId, waveId, shipmentId);
+
+          waveService.signalPrintLabel(tenantId, waveId, shipmentId);
+          return ResponseEntity.ok().build();
+     }
+
+     /**
+      * Signal that a shipment has been confirmed as shipped.
+      */
+     @PostMapping("/{waveId}/shipments/{shipmentId}/confirm-shipped")
+     public ResponseEntity<Void> signalShipmentConfirmed(
+               @AuthenticationPrincipal Jwt jwt,
+               @PathVariable Long waveId,
+               @PathVariable Long shipmentId) {
+
+          String tenantId = extractTenantId(jwt);
+          log.info("Signaling shipment confirmed - tenantId: {}, waveId: {}, shipmentId: {}", 
+                    tenantId, waveId, shipmentId);
+
+          waveService.signalShipmentConfirmed(tenantId, waveId, shipmentId);
           return ResponseEntity.ok().build();
      }
 

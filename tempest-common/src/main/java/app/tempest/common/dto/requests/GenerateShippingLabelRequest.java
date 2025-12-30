@@ -13,6 +13,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class GenerateShippingLabelRequest {
+     private String tenantId;
      private Long shipmentId;
      private Long orderId;
      private String carrier;

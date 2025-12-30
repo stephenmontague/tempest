@@ -2,6 +2,7 @@ package app.tempest.wms.service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -9,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import app.tempest.common.dto.OrderLineDTO;
+import app.tempest.common.dto.ShipmentStateDTO;
 import app.tempest.common.dto.ShipToDTO;
 import app.tempest.common.dto.WaveOrderDTO;
 import app.tempest.common.dto.requests.WaveExecutionRequest;
@@ -17,8 +19,10 @@ import app.tempest.wms.dto.CreateWaveRequest;
 import app.tempest.wms.dto.OrderLineDetail;
 import app.tempest.wms.dto.ReleaseWaveRequest;
 import app.tempest.wms.dto.ShipToDetail;
+import app.tempest.wms.dto.ShipmentStatesResponse;
 import app.tempest.wms.dto.WaveOrderDetail;
 import app.tempest.wms.dto.WaveResponse;
+import app.tempest.wms.dto.WorkflowStatusResponse;
 import app.tempest.wms.entity.Wave;
 import app.tempest.wms.entity.Wave.WaveStatus;
 import app.tempest.wms.repo.WaveRepository;
@@ -105,6 +109,17 @@ public class WaveService {
      }
 
      /**
+      * Get all waves for a tenant.
+      */
+     @Transactional(readOnly = true)
+     public List<WaveResponse> getAllWaves(String tenantId) {
+          return waveRepository.findByTenantId(tenantId)
+                    .stream()
+                    .map(this::toResponse)
+                    .collect(Collectors.toList());
+     }
+
+     /**
       * Release a wave for execution.
       * This starts the WaveExecutionWorkflow.
       */
@@ -123,6 +138,7 @@ public class WaveService {
                     .collect(Collectors.toList());
 
           WaveExecutionRequest workflowRequest = WaveExecutionRequest.builder()
+                    .tenantId(tenantId)
                     .waveId(wave.getId())
                     .facilityId(wave.getFacilityId())
                     .waveNumber(wave.getWaveNumber())
@@ -214,6 +230,121 @@ public class WaveService {
                     WaveExecutionWorkflow.class, wave.getWorkflowId());
           workflow.allPacksCompleted();
           log.info("Sent allPacksCompleted signal - waveId: {}", waveId);
+     }
+
+     /**
+      * Get the workflow status for a wave.
+      */
+     @Transactional(readOnly = true)
+     public WorkflowStatusResponse getWorkflowStatus(String tenantId, Long waveId) {
+          Wave wave = waveRepository.findByTenantIdAndId(tenantId, waveId)
+                    .orElseThrow(() -> new IllegalArgumentException("Wave not found: " + waveId));
+
+          if (wave.getWorkflowId() == null) {
+               // No workflow started yet - return status from wave entity
+               return WorkflowStatusResponse.builder()
+                         .status(wave.getStatus().name())
+                         .currentStep(null)
+                         .blockingReason(null)
+                         .build();
+          }
+
+          try {
+               WaveExecutionWorkflow workflow = workflowClient.newWorkflowStub(
+                         WaveExecutionWorkflow.class, wave.getWorkflowId());
+
+               String currentStep = workflow.getCurrentStep();
+               String blockingReason = workflow.getBlockingReason();
+
+               return WorkflowStatusResponse.builder()
+                         .status(wave.getStatus().name())
+                         .currentStep(currentStep)
+                         .blockingReason(blockingReason)
+                         .build();
+          } catch (Exception e) {
+               log.warn("Failed to query workflow status for waveId: {}, workflowId: {} - {}",
+                         waveId, wave.getWorkflowId(), e.getMessage());
+               // Workflow may have completed or not exist - return status from wave entity
+               return WorkflowStatusResponse.builder()
+                         .status(wave.getStatus().name())
+                         .currentStep(null)
+                         .blockingReason(null)
+                         .build();
+          }
+     }
+
+     /**
+      * Get shipment states for a wave.
+      */
+     @Transactional(readOnly = true)
+     public ShipmentStatesResponse getShipmentStates(String tenantId, Long waveId) {
+          Wave wave = waveRepository.findByTenantIdAndId(tenantId, waveId)
+                    .orElseThrow(() -> new IllegalArgumentException("Wave not found: " + waveId));
+
+          if (wave.getWorkflowId() == null) {
+               return new ShipmentStatesResponse(Map.of());
+          }
+
+          try {
+               WaveExecutionWorkflow workflow = workflowClient.newWorkflowStub(
+                         WaveExecutionWorkflow.class, wave.getWorkflowId());
+               Map<Long, ShipmentStateDTO> shipments = workflow.getShipmentStates();
+               return new ShipmentStatesResponse(shipments);
+          } catch (Exception e) {
+               log.warn("Failed to query shipment states for waveId: {} - {}", waveId, e.getMessage());
+               return new ShipmentStatesResponse(Map.of());
+          }
+     }
+
+     /**
+      * Signal rate selection for a shipment.
+      */
+     public void signalRateSelected(String tenantId, Long waveId, Long shipmentId, String carrier, String serviceLevel) {
+          Wave wave = waveRepository.findByTenantIdAndId(tenantId, waveId)
+                    .orElseThrow(() -> new IllegalArgumentException("Wave not found: " + waveId));
+
+          if (wave.getWorkflowId() == null) {
+               throw new IllegalStateException("Wave has no running workflow");
+          }
+
+          WaveExecutionWorkflow workflow = workflowClient.newWorkflowStub(
+                    WaveExecutionWorkflow.class, wave.getWorkflowId());
+          workflow.rateSelected(shipmentId, carrier, serviceLevel);
+          log.info("Sent rateSelected signal - waveId: {}, shipmentId: {}, carrier: {}", waveId, shipmentId, carrier);
+     }
+
+     /**
+      * Signal to print label for a shipment.
+      */
+     public void signalPrintLabel(String tenantId, Long waveId, Long shipmentId) {
+          Wave wave = waveRepository.findByTenantIdAndId(tenantId, waveId)
+                    .orElseThrow(() -> new IllegalArgumentException("Wave not found: " + waveId));
+
+          if (wave.getWorkflowId() == null) {
+               throw new IllegalStateException("Wave has no running workflow");
+          }
+
+          WaveExecutionWorkflow workflow = workflowClient.newWorkflowStub(
+                    WaveExecutionWorkflow.class, wave.getWorkflowId());
+          workflow.printLabel(shipmentId);
+          log.info("Sent printLabel signal - waveId: {}, shipmentId: {}", waveId, shipmentId);
+     }
+
+     /**
+      * Signal that a shipment has been confirmed as shipped.
+      */
+     public void signalShipmentConfirmed(String tenantId, Long waveId, Long shipmentId) {
+          Wave wave = waveRepository.findByTenantIdAndId(tenantId, waveId)
+                    .orElseThrow(() -> new IllegalArgumentException("Wave not found: " + waveId));
+
+          if (wave.getWorkflowId() == null) {
+               throw new IllegalStateException("Wave has no running workflow");
+          }
+
+          WaveExecutionWorkflow workflow = workflowClient.newWorkflowStub(
+                    WaveExecutionWorkflow.class, wave.getWorkflowId());
+          workflow.shipmentConfirmed(shipmentId);
+          log.info("Sent shipmentConfirmed signal - waveId: {}, shipmentId: {}", waveId, shipmentId);
      }
 
      private WaveOrderDTO toWaveOrderDTO(WaveOrderDetail order) {

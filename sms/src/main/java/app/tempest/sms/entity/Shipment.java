@@ -1,5 +1,7 @@
 package app.tempest.sms.entity;
 
+import java.time.Instant;
+
 import app.tempest.common.entity.TenantAwareEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -17,6 +19,8 @@ import lombok.Setter;
 /**
  * Shipment entity representing a package shipment.
  * All shipments are tenant-scoped.
+ * 
+ * Status flow: CREATED -> LABEL_GENERATED -> SHIPPED -> IN_TRANSIT -> DELIVERED
  */
 @Getter
 @Setter
@@ -51,4 +55,13 @@ public class Shipment extends TenantAwareEntity {
     @Column(name = "status", nullable = false)
     @Builder.Default
     private String status = "CREATED";
+
+    @Column(name = "label_url")
+    private String labelUrl;
+
+    @Column(name = "shipped_at")
+    private Instant shippedAt;
+
+    @Column(name = "delivered_at")
+    private Instant deliveredAt;
 }

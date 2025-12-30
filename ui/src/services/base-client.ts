@@ -1,6 +1,8 @@
 /**
- * Base service client for making authenticated requests to backend services.
+ * Base service client for making requests to backend services.
  * All service clients extend this class to share common functionality.
+ * 
+ * Note: Currently configured without authentication for demo mode.
  */
 
 export interface ServiceError {
@@ -28,31 +30,24 @@ export abstract class BaseServiceClient {
   }
 
   /**
-   * Make an authenticated GET request.
+   * Make a GET request.
    */
-  protected async get<T>(
-    path: string,
-    accessToken: string
-  ): Promise<T> {
+  protected async get<T>(path: string): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: "GET",
-      headers: this.createHeaders(accessToken),
+      headers: this.createHeaders(),
     });
 
     return this.handleResponse<T>(response);
   }
 
   /**
-   * Make an authenticated POST request.
+   * Make a POST request.
    */
-  protected async post<T, B = unknown>(
-    path: string,
-    accessToken: string,
-    body?: B
-  ): Promise<T> {
+  protected async post<T, B = unknown>(path: string, body?: B): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: "POST",
-      headers: this.createHeaders(accessToken),
+      headers: this.createHeaders(),
       body: body ? JSON.stringify(body) : undefined,
     });
 
@@ -60,16 +55,12 @@ export abstract class BaseServiceClient {
   }
 
   /**
-   * Make an authenticated PUT request.
+   * Make a PUT request.
    */
-  protected async put<T, B = unknown>(
-    path: string,
-    accessToken: string,
-    body?: B
-  ): Promise<T> {
+  protected async put<T, B = unknown>(path: string, body?: B): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: "PUT",
-      headers: this.createHeaders(accessToken),
+      headers: this.createHeaders(),
       body: body ? JSON.stringify(body) : undefined,
     });
 
@@ -77,26 +68,23 @@ export abstract class BaseServiceClient {
   }
 
   /**
-   * Make an authenticated DELETE request.
+   * Make a DELETE request.
    */
-  protected async delete<T>(
-    path: string,
-    accessToken: string
-  ): Promise<T> {
+  protected async delete<T>(path: string): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: "DELETE",
-      headers: this.createHeaders(accessToken),
+      headers: this.createHeaders(),
     });
 
     return this.handleResponse<T>(response);
   }
 
   /**
-   * Create authorization headers for the request.
+   * Create headers for the request.
+   * No authentication in demo mode.
    */
-  private createHeaders(accessToken: string): HeadersInit {
+  private createHeaders(): HeadersInit {
     return {
-      Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     };
   }
@@ -124,12 +112,26 @@ export abstract class BaseServiceClient {
       );
     }
 
-    // Handle empty responses (204 No Content)
+    // Handle empty responses (204 No Content or empty body)
     if (response.status === 204) {
       return undefined as T;
     }
 
-    return response.json();
+    // Check if response has content before parsing JSON
+    const contentLength = response.headers.get("content-length");
+    const contentType = response.headers.get("content-type");
+    
+    // If no content-length or it's 0, or no JSON content-type, return undefined
+    if (contentLength === "0" || (!contentType?.includes("application/json"))) {
+      return undefined as T;
+    }
+
+    // Try to parse JSON, but handle empty bodies gracefully
+    const text = await response.text();
+    if (!text || text.trim() === "") {
+      return undefined as T;
+    }
+
+    return JSON.parse(text) as T;
   }
 }
-

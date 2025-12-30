@@ -15,6 +15,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ConfirmShipmentRequest {
+     private String tenantId;
      private Long shipmentId;
      private Long orderId;
      private Instant shippedAt;

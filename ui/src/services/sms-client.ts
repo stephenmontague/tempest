@@ -61,45 +61,52 @@ export class SmsClient extends BaseServiceClient {
   }
 
   /**
-   * Get all shipments for the authenticated tenant.
+   * Get all shipments.
    */
-  async getShipments(accessToken: string): Promise<Shipment[]> {
-    return this.get<Shipment[]>("/shipments", accessToken);
+  async getShipments(): Promise<Shipment[]> {
+    return this.get<Shipment[]>("/shipments");
+  }
+
+  /**
+   * Get shipments by status.
+   */
+  async getShipmentsByStatus(status: string): Promise<Shipment[]> {
+    return this.get<Shipment[]>(`/shipments?status=${encodeURIComponent(status)}`);
   }
 
   /**
    * Get a specific shipment by ID.
    */
-  async getShipment(id: number, accessToken: string): Promise<Shipment> {
-    return this.get<Shipment>(`/shipments/${id}`, accessToken);
+  async getShipment(id: number): Promise<Shipment> {
+    return this.get<Shipment>(`/shipments/${id}`);
   }
 
   /**
    * Create a new shipment.
    */
-  async createShipment(
-    request: CreateShipmentRequest,
-    accessToken: string
-  ): Promise<Shipment> {
-    return this.post<Shipment, CreateShipmentRequest>(
-      "/shipments",
-      accessToken,
-      request
-    );
+  async createShipment(request: CreateShipmentRequest): Promise<Shipment> {
+    return this.post<Shipment, CreateShipmentRequest>("/shipments", request);
   }
 
   /**
    * Get shipments for an order.
    */
-  async getShipmentsByOrder(orderId: number, accessToken: string): Promise<Shipment[]> {
-    return this.get<Shipment[]>(`/orders/${orderId}/shipments`, accessToken);
+  async getShipmentsByOrder(orderId: number): Promise<Shipment[]> {
+    return this.get<Shipment[]>(`/orders/${orderId}/shipments`);
   }
 
   /**
    * Get parcels for a shipment.
    */
-  async getParcels(shipmentId: number, accessToken: string): Promise<Parcel[]> {
-    return this.get<Parcel[]>(`/shipments/${shipmentId}/parcels`, accessToken);
+  async getParcels(shipmentId: number): Promise<Parcel[]> {
+    return this.get<Parcel[]>(`/shipments/${shipmentId}/parcels`);
+  }
+
+  /**
+   * Get shipment counts by status for dashboard.
+   */
+  async getShipmentCounts(): Promise<Record<string, number>> {
+    return this.get<Record<string, number>>("/shipments/counts");
   }
 }
 
@@ -115,4 +122,3 @@ export function getSmsClient(): SmsClient {
   }
   return smsClient;
 }
-

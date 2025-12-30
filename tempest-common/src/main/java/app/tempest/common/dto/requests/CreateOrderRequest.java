@@ -18,7 +18,10 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class CreateOrderRequest {
      private String requestId; // Idempotency key
+     private String tenantId;
+     private String userId;
      private String externalOrderId;
+     private String customerEmail;
      private String channel;
      private String priority;
      private List<OrderLineDTO> orderLines;

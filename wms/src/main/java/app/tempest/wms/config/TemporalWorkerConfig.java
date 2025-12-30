@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Configuration;
 
 import app.tempest.common.temporal.TaskQueues;
 import app.tempest.wms.temporal.activities.impl.CreatePickWaveActivityImpl;
+import app.tempest.wms.temporal.activities.impl.UpdateWaveStatusActivityImpl;
 import app.tempest.wms.temporal.workflow.impl.WaveExecutionWorkflowImpl;
 import io.temporal.client.WorkflowClient;
 import io.temporal.worker.Worker;
@@ -18,7 +19,8 @@ public class TemporalWorkerConfig {
      @Bean
      public WorkerFactory workerFactory(
                WorkflowClient workflowClient,
-               CreatePickWaveActivityImpl createPickWaveActivity) {
+               CreatePickWaveActivityImpl createPickWaveActivity,
+               UpdateWaveStatusActivityImpl updateWaveStatusActivity) {
 
           WorkerFactory factory = WorkerFactory.newInstance(workflowClient);
 
@@ -28,7 +30,9 @@ public class TemporalWorkerConfig {
           worker.registerWorkflowImplementationTypes(WaveExecutionWorkflowImpl.class);
 
           // Register all WMS activities (Spring-managed beans for DI)
-          worker.registerActivitiesImplementations(createPickWaveActivity);
+          worker.registerActivitiesImplementations(
+                    createPickWaveActivity,
+                    updateWaveStatusActivity);
 
           log.info("Starting WMS Temporal worker on task queue: {}", TaskQueues.WMS);
           factory.start();

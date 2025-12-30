@@ -8,6 +8,7 @@ import app.tempest.oms.temporal.activities.impl.CreateOrderActivityImpl;
 import app.tempest.oms.temporal.activities.impl.MarkOrderAwaitingWaveActivityImpl;
 import app.tempest.oms.temporal.activities.impl.MarkOrderReservedActivityImpl;
 import app.tempest.oms.temporal.activities.impl.MarkOrderShippedActivityImpl;
+import app.tempest.oms.temporal.activities.impl.OmsActivitiesImpl;
 import app.tempest.oms.temporal.activities.impl.ValidateOrderActivityImpl;
 import app.tempest.oms.temporal.workflow.impl.OrderFulfillmentWorkflowImpl;
 import app.tempest.oms.temporal.workflow.impl.OrderIntakeWorkflowImpl;
@@ -27,7 +28,8 @@ public class TemporalWorkerConfig {
                CreateOrderActivityImpl createOrderActivity,
                MarkOrderAwaitingWaveActivityImpl markOrderAwaitingWaveActivity,
                MarkOrderReservedActivityImpl markOrderReservedActivity,
-               MarkOrderShippedActivityImpl markOrderShippedActivity) {
+               MarkOrderShippedActivityImpl markOrderShippedActivity,
+               OmsActivitiesImpl omsActivities) {
 
           WorkerFactory factory = WorkerFactory.newInstance(workflowClient);
 
@@ -44,7 +46,8 @@ public class TemporalWorkerConfig {
                     createOrderActivity,
                     markOrderAwaitingWaveActivity,
                     markOrderReservedActivity,
-                    markOrderShippedActivity);
+                    markOrderShippedActivity,
+                    omsActivities);  // Remote activities for cross-service calls
 
           log.info("Starting OMS Temporal worker on task queue: {}", TaskQueues.OMS);
           factory.start();

@@ -73,7 +73,10 @@ public class OrderIntakeWorkflowImpl implements OrderIntakeWorkflow {
           status = "CREATING";
           CreateOrderRequest createRequest = CreateOrderRequest.builder()
                     .requestId(request.getRequestId())
+                    .tenantId(request.getTenantId())
+                    .userId(request.getUserId())
                     .externalOrderId(request.getExternalOrderId())
+                    .customerEmail(request.getCustomerEmail())
                     .channel(request.getChannel())
                     .priority(request.getPriority())
                     .orderLines(request.getOrderLines())

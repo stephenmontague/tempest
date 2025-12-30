@@ -1,5 +1,8 @@
 package app.tempest.wms.temporal.workflow;
 
+import java.util.Map;
+
+import app.tempest.common.dto.ShipmentStateDTO;
 import app.tempest.common.dto.WaveStatusDTO;
 import app.tempest.common.dto.requests.WaveExecutionRequest;
 import app.tempest.common.dto.results.WaveExecutionResult;
@@ -17,11 +20,12 @@ import io.temporal.workflow.WorkflowMethod;
  * 1. Inventory allocation for all orders
  * 2. Pick task creation and completion
  * 3. Packing completion
- * 4. Shipment creation and confirmation
+ * 4. Shipment creation (auto after packs complete)
+ * 5. HITL: Rate selection (optional), Print label, Confirm shipped
  * 
  * The workflow waits for human-driven signals (picks completed, packs
- * completed)
- * and can be cancelled at any point with proper compensation.
+ * completed, print label, confirm shipped) and can be cancelled at any point
+ * with proper compensation.
  */
 @WorkflowInterface
 public interface WaveExecutionWorkflow {
@@ -77,6 +81,35 @@ public interface WaveExecutionWorkflow {
      void orderPackCompleted(Long orderId);
 
      /**
+      * Signal that a rate has been selected for a shipment.
+      * This is optional - users can skip rate shopping and use default carrier.
+      * 
+      * @param shipmentId   The shipment ID
+      * @param carrier      The selected carrier
+      * @param serviceLevel The selected service level
+      */
+     @SignalMethod
+     void rateSelected(Long shipmentId, String carrier, String serviceLevel);
+
+     /**
+      * Signal to print a label for a shipment.
+      * This triggers label generation and updates the shipment status.
+      * 
+      * @param shipmentId The shipment ID to print label for
+      */
+     @SignalMethod
+     void printLabel(Long shipmentId);
+
+     /**
+      * Signal that a shipment has been confirmed as shipped.
+      * This marks the shipment as complete.
+      * 
+      * @param shipmentId The shipment ID that has been shipped
+      */
+     @SignalMethod
+     void shipmentConfirmed(Long shipmentId);
+
+     /**
       * Query the current status of the wave execution.
       * 
       * @return The current wave status including per-order progress
@@ -99,4 +132,12 @@ public interface WaveExecutionWorkflow {
       */
      @QueryMethod
      String getBlockingReason();
+
+     /**
+      * Query the current state of all shipments in the wave.
+      * 
+      * @return Map of shipmentId to ShipmentStateDTO
+      */
+     @QueryMethod
+     Map<Long, ShipmentStateDTO> getShipmentStates();
 }

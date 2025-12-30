@@ -6,7 +6,9 @@ import org.springframework.context.annotation.Configuration;
 import app.tempest.common.temporal.TaskQueues;
 import app.tempest.sms.temporal.activities.impl.ConfirmShipmentActivityImpl;
 import app.tempest.sms.temporal.activities.impl.CreateShipmentActivityImpl;
+import app.tempest.sms.temporal.activities.impl.FetchRatesActivityImpl;
 import app.tempest.sms.temporal.activities.impl.GenerateShippingLabelActivityImpl;
+import app.tempest.sms.temporal.activities.impl.SelectRateActivityImpl;
 import io.temporal.client.WorkflowClient;
 import io.temporal.worker.Worker;
 import io.temporal.worker.WorkerFactory;
@@ -21,7 +23,9 @@ public class TemporalWorkerConfig {
                WorkflowClient workflowClient,
                CreateShipmentActivityImpl createShipmentActivity,
                GenerateShippingLabelActivityImpl generateShippingLabelActivity,
-               ConfirmShipmentActivityImpl confirmShipmentActivity) {
+               ConfirmShipmentActivityImpl confirmShipmentActivity,
+               FetchRatesActivityImpl fetchRatesActivity,
+               SelectRateActivityImpl selectRateActivity) {
 
           WorkerFactory factory = WorkerFactory.newInstance(workflowClient);
 
@@ -31,7 +35,9 @@ public class TemporalWorkerConfig {
           worker.registerActivitiesImplementations(
                     createShipmentActivity,
                     generateShippingLabelActivity,
-                    confirmShipmentActivity);
+                    confirmShipmentActivity,
+                    fetchRatesActivity,
+                    selectRateActivity);
 
           log.info("Starting SMS Temporal worker on task queue: {}", TaskQueues.SMS);
           factory.start();

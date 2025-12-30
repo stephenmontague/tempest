@@ -12,6 +12,7 @@ import java.util.Set;
 import app.tempest.common.dto.OrderLineDTO;
 import app.tempest.common.dto.PickItemDTO;
 import app.tempest.common.dto.ShipToDTO;
+import app.tempest.common.dto.ShipmentStateDTO;
 import app.tempest.common.dto.WaveOrderDTO;
 import app.tempest.common.dto.WaveStatusDTO;
 import app.tempest.common.dto.requests.AllocateInventoryRequest;
@@ -23,16 +24,19 @@ import app.tempest.common.dto.requests.GenerateShippingLabelRequest;
 import app.tempest.common.dto.requests.MarkOrderReservedRequest;
 import app.tempest.common.dto.requests.MarkOrderShippedRequest;
 import app.tempest.common.dto.requests.ReleaseInventoryRequest;
+import app.tempest.common.dto.requests.SelectRateRequest;
 import app.tempest.common.dto.requests.WaveExecutionRequest;
 import app.tempest.common.dto.results.AllocateInventoryResult;
 import app.tempest.common.dto.results.CreateShipmentResult;
 import app.tempest.common.dto.results.GenerateShippingLabelResult;
 import app.tempest.common.dto.results.OrderShipmentResult;
 import app.tempest.common.dto.results.WaveExecutionResult;
+import app.tempest.common.dto.requests.UpdateWaveStatusRequest;
 import app.tempest.common.temporal.TaskQueues;
+import app.tempest.common.temporal.activities.OmsActivities;
 import app.tempest.wms.temporal.activities.CreatePickWaveActivity;
+import app.tempest.wms.temporal.activities.UpdateWaveStatusActivity;
 import app.tempest.wms.temporal.activities.remote.ImsActivities;
-import app.tempest.wms.temporal.activities.remote.OmsActivities;
 import app.tempest.wms.temporal.activities.remote.SmsActivities;
 import app.tempest.wms.temporal.workflow.WaveExecutionWorkflow;
 import io.temporal.activity.ActivityOptions;
@@ -40,7 +44,7 @@ import io.temporal.common.RetryOptions;
 import io.temporal.workflow.Workflow;
 
 /**
- * Implementation of WaveExecutionWorkflow.
+ * Implementation of WaveExecutionWorkflow with HITL shipment handling.
  * 
  * Orchestrates batch fulfillment of orders in a wave:
  * 1. Allocate inventory for all orders
@@ -49,8 +53,12 @@ import io.temporal.workflow.Workflow;
  * 4. Wait for all picks to complete (signal)
  * 5. Consume inventory
  * 6. Wait for all packs to complete (signal)
- * 7. Create shipments and labels
- * 8. Mark orders as shipped
+ * 7. Create shipments (auto)
+ * 8. HITL: For each shipment:
+ * - Optional: Select rate (signal)
+ * - Print label (signal triggers activity)
+ * - Confirm shipped (signal)
+ * 9. Mark orders as shipped when all shipments confirmed
  */
 public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
 
@@ -71,6 +79,12 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
      private final List<Long> failedOrderIds = new ArrayList<>();
      private final List<OrderShipmentResult> orderShipments = new ArrayList<>();
 
+     // Per-shipment tracking for HITL
+     private final Map<Long, ShipmentStateDTO> shipmentStates = new HashMap<>();
+     private final Map<Long, Long> orderToShipmentMap = new HashMap<>(); // orderId -> shipmentId
+     private final Set<Long> shipmentsToGenerateLabel = new HashSet<>();
+     private final Set<Long> shipmentsToConfirm = new HashSet<>();
+
      // Counters
      private int ordersAllocated = 0;
      private int ordersPicked = 0;
@@ -78,8 +92,9 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
      private int ordersShipped = 0;
      private int ordersFailed = 0;
 
-     // Request data (for queries)
+     // Request data (for queries and activities)
      private Long waveId;
+     private String tenantId;
      private int totalOrders = 0;
 
      // Default activity options with retry
@@ -111,6 +126,11 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
                CreatePickWaveActivity.class,
                defaultActivityOptions);
 
+     // WMS Activity to update wave status in DB
+     private final UpdateWaveStatusActivity updateWaveStatusActivity = Workflow.newActivityStub(
+               UpdateWaveStatusActivity.class,
+               defaultActivityOptions);
+
      // SMS Activities (on sms-tasks queue)
      private final SmsActivities smsActivities = Workflow.newActivityStub(
                SmsActivities.class,
@@ -121,6 +141,7 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
      @Override
      public WaveExecutionResult execute(WaveExecutionRequest request) {
           this.waveId = request.getWaveId();
+          this.tenantId = request.getTenantId();
           this.totalOrders = request.getOrders().size();
 
           // Initialize order statuses
@@ -134,8 +155,8 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
                status = "ALLOCATING";
 
                for (WaveOrderDTO order : request.getOrders()) {
-                    if (cancelled) break;
-
+                    if (cancelled)
+                         break;
                     try {
                          allocateInventoryForOrder(order);
                          orderStatuses.put(order.getOrderId(), "ALLOCATED");
@@ -156,7 +177,8 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
                status = "RESERVED";
 
                for (WaveOrderDTO order : request.getOrders()) {
-                    if (failedOrderIds.contains(order.getOrderId())) continue;
+                    if (failedOrderIds.contains(order.getOrderId()))
+                         continue;
 
                     MarkOrderReservedRequest reservedRequest = MarkOrderReservedRequest.builder()
                               .orderId(order.getOrderId())
@@ -171,7 +193,8 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
                status = "PICKING";
 
                for (WaveOrderDTO order : request.getOrders()) {
-                    if (failedOrderIds.contains(order.getOrderId())) continue;
+                    if (failedOrderIds.contains(order.getOrderId()))
+                         continue;
 
                     List<PickItemDTO> pickItems = order.getOrderLines().stream()
                               .map(line -> PickItemDTO.builder()
@@ -206,7 +229,8 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
                currentStep = "CONSUMING_INVENTORY";
 
                for (WaveOrderDTO order : request.getOrders()) {
-                    if (failedOrderIds.contains(order.getOrderId())) continue;
+                    if (failedOrderIds.contains(order.getOrderId()))
+                         continue;
 
                     consumeInventoryForOrder(order);
                     orderStatuses.put(order.getOrderId(), "PICKED");
@@ -225,45 +249,92 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
                     return handleCancellation(request);
                }
 
-               // Step 7: Create shipments and labels for all orders
+               // Step 7: Create shipments for all orders (auto after packs complete)
                currentStep = "CREATING_SHIPMENTS";
                status = "SHIPPING";
 
                for (WaveOrderDTO order : request.getOrders()) {
-                    if (failedOrderIds.contains(order.getOrderId())) continue;
+                    if (failedOrderIds.contains(order.getOrderId()))
+                         continue;
 
                     try {
-                         OrderShipmentResult shipmentResult = createShipmentForOrder(order, request.getFacilityId());
-                         orderShipments.add(shipmentResult);
-                         orderStatuses.put(order.getOrderId(), "SHIPPED");
-                         ordersShipped++;
+                         ShipmentStateDTO shipmentState = createShipmentForOrder(order, request.getFacilityId());
+                         shipmentStates.put(shipmentState.getShipmentId(), shipmentState);
+                         orderToShipmentMap.put(order.getOrderId(), shipmentState.getShipmentId());
+                         orderStatuses.put(order.getOrderId(), "SHIPMENT_CREATED");
                          ordersPacked++;
                     } catch (Exception e) {
-                         orderStatuses.put(order.getOrderId(), "SHIPPING_FAILED");
+                         orderStatuses.put(order.getOrderId(), "SHIPMENT_FAILED");
                          failedOrderIds.add(order.getOrderId());
                          ordersFailed++;
-                         orderShipments.add(OrderShipmentResult.builder()
-                                   .orderId(order.getOrderId())
-                                   .status("FAILED")
-                                   .failureReason(e.getMessage())
-                                   .build());
                     }
                }
 
-               // Step 8: Mark orders as shipped in OMS
+               // Step 8: HITL - Wait for all shipments to be confirmed
+               currentStep = "WAITING_FOR_SHIPMENTS";
+               blockingReason = "Waiting for shipments: print labels and confirm shipped";
+
+               // Process label generation requests as they come in
+               while (!allShipmentsConfirmed() && !cancelled) {
+                    // Wait for either a label request, a confirmation, or cancellation
+                    Workflow.await(() -> !shipmentsToGenerateLabel.isEmpty() ||
+                              !shipmentsToConfirm.isEmpty() ||
+                              allShipmentsConfirmed() ||
+                              cancelled);
+
+                    // Process pending label generations
+                    for (Long shipmentId : new HashSet<>(shipmentsToGenerateLabel)) {
+                         shipmentsToGenerateLabel.remove(shipmentId);
+                         generateLabelForShipment(shipmentId);
+                    }
+
+                    // Process pending confirmations
+                    for (Long shipmentId : new HashSet<>(shipmentsToConfirm)) {
+                         shipmentsToConfirm.remove(shipmentId);
+                         confirmShipment(shipmentId);
+                    }
+               }
+
+               blockingReason = null;
+
+               if (cancelled) {
+                    return handleCancellation(request);
+               }
+
+               // Step 9: Mark orders as shipped in OMS
                currentStep = "MARKING_SHIPPED";
 
-               for (OrderShipmentResult shipment : orderShipments) {
+               for (ShipmentStateDTO shipment : shipmentStates.values()) {
                     if ("SHIPPED".equals(shipment.getStatus())) {
                          MarkOrderShippedRequest shippedRequest = MarkOrderShippedRequest.builder()
                                    .orderId(shipment.getOrderId())
                                    .shipmentId(shipment.getShipmentId())
                                    .trackingNumber(shipment.getTrackingNumber())
-                                   .carrier("STUB_CARRIER")
+                                   .carrier(shipment.getCarrier())
                                    .build();
                          omsActivities.markOrderShipped(shippedRequest);
+
+                         orderShipments.add(OrderShipmentResult.builder()
+                                   .orderId(shipment.getOrderId())
+                                   .shipmentId(shipment.getShipmentId())
+                                   .trackingNumber(shipment.getTrackingNumber())
+                                   .status("SHIPPED")
+                                   .build());
+
+                         orderStatuses.put(shipment.getOrderId(), "SHIPPED");
+                         ordersShipped++;
                     }
                }
+
+               // Step 10: Update wave status in database
+               currentStep = "UPDATING_WAVE_STATUS";
+
+               UpdateWaveStatusRequest updateRequest = UpdateWaveStatusRequest.builder()
+                         .tenantId(tenantId)
+                         .waveId(waveId)
+                         .status("COMPLETED")
+                         .build();
+               updateWaveStatusActivity.updateStatus(updateRequest);
 
                currentStep = "COMPLETED";
                status = "COMPLETED";
@@ -281,8 +352,28 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
                status = "FAILED";
                currentStep = "FAILED";
                blockingReason = e.getMessage();
+
+               // Try to update wave status to FAILED
+               try {
+                    UpdateWaveStatusRequest updateRequest = UpdateWaveStatusRequest.builder()
+                              .tenantId(tenantId)
+                              .waveId(waveId)
+                              .status("FAILED")
+                              .build();
+                    updateWaveStatusActivity.updateStatus(updateRequest);
+               } catch (Exception ignored) {
+                    // Best effort - don't fail the workflow if status update fails
+               }
+
                throw e;
           }
+     }
+
+     private boolean allShipmentsConfirmed() {
+          if (shipmentStates.isEmpty())
+               return false;
+          return shipmentStates.values().stream()
+                    .allMatch(s -> "SHIPPED".equals(s.getStatus()));
      }
 
      private void allocateInventoryForOrder(WaveOrderDTO order) {
@@ -313,45 +404,64 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
           }
      }
 
-     private OrderShipmentResult createShipmentForOrder(WaveOrderDTO order, Long facilityId) {
-          // Create shipment
+     private ShipmentStateDTO createShipmentForOrder(WaveOrderDTO order, Long facilityId) {
           ShipToDTO shipTo = order.getShipTo();
           CreateShipmentRequest shipmentRequest = CreateShipmentRequest.builder()
+                    .tenantId(tenantId)
                     .orderId(order.getOrderId())
                     .facilityId(facilityId)
-                    .carrier("STUB_CARRIER")
-                    .serviceLevel("GROUND")
+                    .carrier("PENDING") // Default - user can select rate
+                    .serviceLevel("STANDARD")
                     .shipTo(shipTo)
                     .build();
 
           CreateShipmentResult shipmentResult = smsActivities.createShipment(shipmentRequest);
-          Long shipmentId = shipmentResult.getShipmentId();
 
-          // Generate label
-          GenerateShippingLabelRequest labelRequest = GenerateShippingLabelRequest.builder()
-                    .shipmentId(shipmentId)
+          return ShipmentStateDTO.builder()
+                    .shipmentId(shipmentResult.getShipmentId())
                     .orderId(order.getOrderId())
-                    .carrier("STUB_CARRIER")
-                    .serviceLevel("GROUND")
+                    .status("CREATED")
+                    .carrier("PENDING")
+                    .serviceLevel("STANDARD")
+                    .build();
+     }
+
+     private void generateLabelForShipment(Long shipmentId) {
+          ShipmentStateDTO shipment = shipmentStates.get(shipmentId);
+          if (shipment == null)
+               return;
+
+          GenerateShippingLabelRequest labelRequest = GenerateShippingLabelRequest.builder()
+                    .tenantId(tenantId)
+                    .shipmentId(shipmentId)
+                    .orderId(shipment.getOrderId())
+                    .carrier(shipment.getCarrier())
+                    .serviceLevel(shipment.getServiceLevel())
                     .build();
 
           GenerateShippingLabelResult labelResult = smsActivities.generateLabel(labelRequest);
-          String trackingNumber = labelResult.getTrackingNumber();
 
-          // Confirm shipment
+          // Update shipment state
+          shipment.setTrackingNumber(labelResult.getTrackingNumber());
+          shipment.setLabelUrl(labelResult.getLabelUrl());
+          shipment.setStatus("LABEL_GENERATED");
+     }
+
+     private void confirmShipment(Long shipmentId) {
+          ShipmentStateDTO shipment = shipmentStates.get(shipmentId);
+          if (shipment == null)
+               return;
+
           ConfirmShipmentRequest confirmRequest = ConfirmShipmentRequest.builder()
+                    .tenantId(tenantId)
                     .shipmentId(shipmentId)
-                    .orderId(order.getOrderId())
+                    .orderId(shipment.getOrderId())
                     .shippedAt(Instant.now())
                     .build();
           smsActivities.confirmShipment(confirmRequest);
 
-          return OrderShipmentResult.builder()
-                    .orderId(order.getOrderId())
-                    .shipmentId(shipmentId)
-                    .trackingNumber(trackingNumber)
-                    .status("SHIPPED")
-                    .build();
+          // Update shipment state
+          shipment.setStatus("SHIPPED");
      }
 
      private WaveExecutionResult handleCancellation(WaveExecutionRequest request) {
@@ -372,6 +482,14 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
                orderStatuses.put(order.getOrderId(), "CANCELLED");
           }
 
+          // Update wave status in database
+          UpdateWaveStatusRequest updateRequest = UpdateWaveStatusRequest.builder()
+                    .tenantId(tenantId)
+                    .waveId(waveId)
+                    .status("CANCELLED")
+                    .build();
+          updateWaveStatusActivity.updateStatus(updateRequest);
+
           currentStep = "CANCELLED";
 
           return WaveExecutionResult.builder()
@@ -383,6 +501,8 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
                     .orderShipments(List.of())
                     .build();
      }
+
+     // Signal handlers
 
      @Override
      public void allPicksCompleted() {
@@ -411,6 +531,45 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
      }
 
      @Override
+     public void rateSelected(Long shipmentId, String carrier, String serviceLevel) {
+          ShipmentStateDTO shipment = shipmentStates.get(shipmentId);
+          if (shipment != null && "CREATED".equals(shipment.getStatus())) {
+               // Call activity to update the shipment in DB
+               SelectRateRequest selectRequest = SelectRateRequest.builder()
+                         .tenantId(tenantId)
+                         .shipmentId(shipmentId)
+                         .carrier(carrier)
+                         .serviceLevel(serviceLevel)
+                         .build();
+               smsActivities.selectRate(selectRequest);
+
+               // Update local state
+               shipment.setCarrier(carrier);
+               shipment.setServiceLevel(serviceLevel);
+               shipment.setStatus("RATE_SELECTED");
+          }
+     }
+
+     @Override
+     public void printLabel(Long shipmentId) {
+          ShipmentStateDTO shipment = shipmentStates.get(shipmentId);
+          if (shipment != null &&
+                    ("CREATED".equals(shipment.getStatus()) || "RATE_SELECTED".equals(shipment.getStatus()))) {
+               shipmentsToGenerateLabel.add(shipmentId);
+          }
+     }
+
+     @Override
+     public void shipmentConfirmed(Long shipmentId) {
+          ShipmentStateDTO shipment = shipmentStates.get(shipmentId);
+          if (shipment != null && "LABEL_GENERATED".equals(shipment.getStatus())) {
+               shipmentsToConfirm.add(shipmentId);
+          }
+     }
+
+     // Query handlers
+
+     @Override
      public WaveStatusDTO getWaveStatus() {
           return WaveStatusDTO.builder()
                     .waveId(waveId)
@@ -436,5 +595,10 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
      @Override
      public String getBlockingReason() {
           return blockingReason;
+     }
+
+     @Override
+     public Map<Long, ShipmentStateDTO> getShipmentStates() {
+          return new HashMap<>(shipmentStates);
      }
 }
