@@ -40,4 +40,10 @@ public interface ItemRepository extends JpaRepository<Item, Long> {
      * Check if an item with the given SKU exists for a tenant.
      */
     boolean existsByTenantIdAndSku(String tenantId, String sku);
+
+    /**
+     * Search for active items by SKU prefix (case-insensitive).
+     * Used for autocomplete/typeahead functionality.
+     */
+    List<Item> findByTenantIdAndActiveTrueAndSkuStartingWithIgnoreCase(String tenantId, String skuPrefix);
 }

@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -77,6 +78,31 @@ public class ItemController {
         return itemRepository.findByTenantIdAndSku(tenantId, sku)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Search for items by SKU prefix.
+     * Used for autocomplete/typeahead functionality.
+     * Returns only active items matching the search query.
+     * Accessible by ADMIN, MANAGER, WAREHOUSE_ASSOCIATE, and INTEGRATION roles.
+     */
+    @GetMapping("/search")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'WAREHOUSE_ASSOCIATE', 'INTEGRATION')")
+    public ResponseEntity<List<Item>> searchItems(
+            @RequestParam(name = "q", defaultValue = "") String query,
+            @AuthenticationPrincipal Jwt jwt) {
+        String tenantId = SecurityUtils.requireTenantId(jwt);
+        log.debug("Searching items with query '{}' for tenant: {}", query, tenantId);
+
+        List<Item> items;
+        if (query.isEmpty()) {
+            // Return all active items if no query provided
+            items = itemRepository.findByTenantIdAndActiveTrue(tenantId);
+        } else {
+            // Search by SKU prefix
+            items = itemRepository.findByTenantIdAndActiveTrueAndSkuStartingWithIgnoreCase(tenantId, query);
+        }
+        return ResponseEntity.ok(items);
     }
 
     /**

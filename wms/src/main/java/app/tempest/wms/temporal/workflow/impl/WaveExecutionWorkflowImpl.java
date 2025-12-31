@@ -9,12 +9,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import app.tempest.common.dto.CarrierRateDTO;
+import app.tempest.common.dto.FetchedRatesDTO;
 import app.tempest.common.dto.OrderLineDTO;
 import app.tempest.common.dto.PickItemDTO;
 import app.tempest.common.dto.ShipToDTO;
 import app.tempest.common.dto.ShipmentStateDTO;
 import app.tempest.common.dto.WaveOrderDTO;
 import app.tempest.common.dto.WaveStatusDTO;
+import app.tempest.common.dto.requests.FetchRatesRequest;
 import app.tempest.common.dto.requests.AllocateInventoryRequest;
 import app.tempest.common.dto.requests.ConfirmShipmentRequest;
 import app.tempest.common.dto.requests.ConsumeInventoryRequest;
@@ -34,13 +37,19 @@ import app.tempest.common.dto.results.WaveExecutionResult;
 import app.tempest.common.dto.requests.UpdateWaveStatusRequest;
 import app.tempest.common.temporal.TaskQueues;
 import app.tempest.common.temporal.activities.OmsActivities;
+import app.tempest.common.dto.results.FetchRatesResult;
 import app.tempest.wms.temporal.activities.CreatePickWaveActivity;
 import app.tempest.wms.temporal.activities.UpdateWaveStatusActivity;
+import app.tempest.wms.temporal.activities.remote.FetchFedExRatesActivity;
+import app.tempest.wms.temporal.activities.remote.FetchUPSRatesActivity;
+import app.tempest.wms.temporal.activities.remote.FetchUSPSRatesActivity;
 import app.tempest.wms.temporal.activities.remote.ImsActivities;
 import app.tempest.wms.temporal.activities.remote.SmsActivities;
 import app.tempest.wms.temporal.workflow.WaveExecutionWorkflow;
 import io.temporal.activity.ActivityOptions;
 import io.temporal.common.RetryOptions;
+import io.temporal.workflow.Async;
+import io.temporal.workflow.Promise;
 import io.temporal.workflow.Workflow;
 
 /**
@@ -84,6 +93,10 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
      private final Map<Long, Long> orderToShipmentMap = new HashMap<>(); // orderId -> shipmentId
      private final Set<Long> shipmentsToGenerateLabel = new HashSet<>();
      private final Set<Long> shipmentsToConfirm = new HashSet<>();
+
+     // Rate fetching state
+     private final Map<Long, FetchedRatesDTO> fetchedRatesMap = new HashMap<>();
+     private final Set<Long> shipmentsToFetchRates = new HashSet<>();
 
      // Counters
      private int ordersAllocated = 0;
@@ -137,6 +150,29 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
                ActivityOptions.newBuilder(defaultActivityOptions)
                          .setTaskQueue(TaskQueues.SMS)
                          .build());
+
+     // Per-carrier rate fetching activities with higher retry count for FedEx demo
+     private final ActivityOptions rateActivityOptions = ActivityOptions.newBuilder()
+               .setStartToCloseTimeout(Duration.ofSeconds(30))
+               .setRetryOptions(RetryOptions.newBuilder()
+                         .setMaximumAttempts(10) // Allow up to 10 attempts for FedEx failures
+                         .setInitialInterval(Duration.ofSeconds(1))
+                         .setBackoffCoefficient(1.5)
+                         .build())
+               .setTaskQueue(TaskQueues.SMS)
+               .build();
+
+     private final FetchUSPSRatesActivity uspsRatesActivity = Workflow.newActivityStub(
+               FetchUSPSRatesActivity.class,
+               rateActivityOptions);
+
+     private final FetchUPSRatesActivity upsRatesActivity = Workflow.newActivityStub(
+               FetchUPSRatesActivity.class,
+               rateActivityOptions);
+
+     private final FetchFedExRatesActivity fedexRatesActivity = Workflow.newActivityStub(
+               FetchFedExRatesActivity.class,
+               rateActivityOptions);
 
      @Override
      public WaveExecutionResult execute(WaveExecutionRequest request) {
@@ -276,11 +312,18 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
 
                // Process label generation requests as they come in
                while (!allShipmentsConfirmed() && !cancelled) {
-                    // Wait for either a label request, a confirmation, or cancellation
-                    Workflow.await(() -> !shipmentsToGenerateLabel.isEmpty() ||
+                    // Wait for either a rate fetch, label request, a confirmation, or cancellation
+                    Workflow.await(() -> !shipmentsToFetchRates.isEmpty() ||
+                              !shipmentsToGenerateLabel.isEmpty() ||
                               !shipmentsToConfirm.isEmpty() ||
                               allShipmentsConfirmed() ||
                               cancelled);
+
+                    // Process pending rate fetches (parallel carrier calls)
+                    for (Long shipmentId : new HashSet<>(shipmentsToFetchRates)) {
+                         shipmentsToFetchRates.remove(shipmentId);
+                         fetchRatesForShipment(shipmentId);
+                    }
 
                     // Process pending label generations
                     for (Long shipmentId : new HashSet<>(shipmentsToGenerateLabel)) {
@@ -426,6 +469,64 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
                     .build();
      }
 
+     /**
+      * Fetch rates from all carriers in parallel.
+      * USPS and UPS will succeed immediately.
+      * FedEx will fail 4 times before succeeding on the 5th attempt.
+      */
+     private void fetchRatesForShipment(Long shipmentId) {
+          ShipmentStateDTO shipment = shipmentStates.get(shipmentId);
+          if (shipment == null)
+               return;
+
+          // Initialize the fetched rates state
+          FetchedRatesDTO ratesState = FetchedRatesDTO.builder()
+                    .shipmentId(shipmentId)
+                    .status("FETCHING")
+                    .uspsStatus("FETCHING")
+                    .upsStatus("FETCHING")
+                    .fedexStatus("FETCHING")
+                    .rates(new ArrayList<>())
+                    .build();
+          fetchedRatesMap.put(shipmentId, ratesState);
+
+          FetchRatesRequest request = FetchRatesRequest.builder()
+                    .tenantId(tenantId)
+                    .shipmentId(shipmentId)
+                    .orderId(shipment.getOrderId())
+                    .build();
+
+          // Launch all three carrier rate fetches in parallel using Async.function
+          Promise<FetchRatesResult> uspsPromise = Async.function(
+                    uspsRatesActivity::fetchUSPSRates, request);
+          Promise<FetchRatesResult> upsPromise = Async.function(
+                    upsRatesActivity::fetchUPSRates, request);
+          Promise<FetchRatesResult> fedexPromise = Async.function(
+                    fedexRatesActivity::fetchFedExRates, request);
+
+          // Wait for all to complete
+          Promise.allOf(uspsPromise, upsPromise, fedexPromise).get();
+
+          // Collect all rates
+          List<CarrierRateDTO> allRates = new ArrayList<>();
+
+          FetchRatesResult uspsResult = uspsPromise.get();
+          allRates.addAll(uspsResult.getRates());
+          ratesState.setUspsStatus("COMPLETED");
+
+          FetchRatesResult upsResult = upsPromise.get();
+          allRates.addAll(upsResult.getRates());
+          ratesState.setUpsStatus("COMPLETED");
+
+          FetchRatesResult fedexResult = fedexPromise.get();
+          allRates.addAll(fedexResult.getRates());
+          ratesState.setFedexStatus("COMPLETED");
+
+          // Update final state
+          ratesState.setRates(allRates);
+          ratesState.setStatus("COMPLETED");
+     }
+
      private void generateLabelForShipment(Long shipmentId) {
           ShipmentStateDTO shipment = shipmentStates.get(shipmentId);
           if (shipment == null)
@@ -567,6 +668,14 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
           }
      }
 
+     @Override
+     public void fetchRates(Long shipmentId) {
+          ShipmentStateDTO shipment = shipmentStates.get(shipmentId);
+          if (shipment != null && "CREATED".equals(shipment.getStatus())) {
+               shipmentsToFetchRates.add(shipmentId);
+          }
+     }
+
      // Query handlers
 
      @Override
@@ -600,5 +709,18 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
      @Override
      public Map<Long, ShipmentStateDTO> getShipmentStates() {
           return new HashMap<>(shipmentStates);
+     }
+
+     @Override
+     public FetchedRatesDTO getFetchedRates(Long shipmentId) {
+          FetchedRatesDTO rates = fetchedRatesMap.get(shipmentId);
+          if (rates == null) {
+               return FetchedRatesDTO.builder()
+                         .shipmentId(shipmentId)
+                         .status("PENDING")
+                         .rates(List.of())
+                         .build();
+          }
+          return rates;
      }
 }

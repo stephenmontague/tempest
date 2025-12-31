@@ -118,6 +118,29 @@ export interface ShipmentStatesResponse {
 }
 
 /**
+ * Carrier rate from rate shopping.
+ */
+export interface CarrierRate {
+  carrier: string;
+  serviceLevel: string;
+  price: number;
+  estimatedDelivery: string;
+}
+
+/**
+ * Fetched rates response from workflow query.
+ */
+export interface FetchedRatesResponse {
+  shipmentId: number;
+  status: string;  // PENDING, FETCHING, COMPLETED, FAILED
+  rates: CarrierRate[];
+  uspsStatus?: string;
+  upsStatus?: string;
+  fedexStatus?: string;
+  errorMessage?: string;
+}
+
+/**
  * WMS (Warehouse Management System) service client.
  * Used server-side only - never expose to browser.
  */
@@ -241,6 +264,21 @@ export class WmsClient extends BaseServiceClient {
    */
   async signalShipmentConfirmed(waveId: number, shipmentId: number): Promise<void> {
     return this.post<void>(`/api/waves/${waveId}/shipments/${shipmentId}/confirm-shipped`);
+  }
+
+  /**
+   * Signal to fetch rates for a shipment.
+   * This triggers parallel rate fetching from USPS, UPS, and FedEx.
+   */
+  async signalFetchRates(waveId: number, shipmentId: number): Promise<void> {
+    return this.post<void>(`/api/waves/${waveId}/shipments/${shipmentId}/fetch-rates`);
+  }
+
+  /**
+   * Get fetched rates for a shipment.
+   */
+  async getFetchedRates(waveId: number, shipmentId: number): Promise<FetchedRatesResponse> {
+    return this.get<FetchedRatesResponse>(`/api/waves/${waveId}/shipments/${shipmentId}/rates`);
   }
 
   /**

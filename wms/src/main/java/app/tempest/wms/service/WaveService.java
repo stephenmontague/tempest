@@ -9,6 +9,7 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import app.tempest.common.dto.FetchedRatesDTO;
 import app.tempest.common.dto.OrderLineDTO;
 import app.tempest.common.dto.ShipmentStateDTO;
 import app.tempest.common.dto.ShipToDTO;
@@ -345,6 +346,56 @@ public class WaveService {
                     WaveExecutionWorkflow.class, wave.getWorkflowId());
           workflow.shipmentConfirmed(shipmentId);
           log.info("Sent shipmentConfirmed signal - waveId: {}, shipmentId: {}", waveId, shipmentId);
+     }
+
+     /**
+      * Signal to fetch rates for a shipment.
+      * This triggers parallel rate fetching from USPS, UPS, and FedEx.
+      */
+     public void signalFetchRates(String tenantId, Long waveId, Long shipmentId) {
+          Wave wave = waveRepository.findByTenantIdAndId(tenantId, waveId)
+                    .orElseThrow(() -> new IllegalArgumentException("Wave not found: " + waveId));
+
+          if (wave.getWorkflowId() == null) {
+               throw new IllegalStateException("Wave has no running workflow");
+          }
+
+          WaveExecutionWorkflow workflow = workflowClient.newWorkflowStub(
+                    WaveExecutionWorkflow.class, wave.getWorkflowId());
+          workflow.fetchRates(shipmentId);
+          log.info("Sent fetchRates signal - waveId: {}, shipmentId: {}", waveId, shipmentId);
+     }
+
+     /**
+      * Get fetched rates for a shipment.
+      */
+     @Transactional(readOnly = true)
+     public FetchedRatesDTO getFetchedRates(String tenantId, Long waveId, Long shipmentId) {
+          Wave wave = waveRepository.findByTenantIdAndId(tenantId, waveId)
+                    .orElseThrow(() -> new IllegalArgumentException("Wave not found: " + waveId));
+
+          if (wave.getWorkflowId() == null) {
+               return FetchedRatesDTO.builder()
+                         .shipmentId(shipmentId)
+                         .status("PENDING")
+                         .rates(List.of())
+                         .build();
+          }
+
+          try {
+               WaveExecutionWorkflow workflow = workflowClient.newWorkflowStub(
+                         WaveExecutionWorkflow.class, wave.getWorkflowId());
+               return workflow.getFetchedRates(shipmentId);
+          } catch (Exception e) {
+               log.warn("Failed to query fetched rates for waveId: {}, shipmentId: {} - {}",
+                         waveId, shipmentId, e.getMessage());
+               return FetchedRatesDTO.builder()
+                         .shipmentId(shipmentId)
+                         .status("ERROR")
+                         .errorMessage(e.getMessage())
+                         .rates(List.of())
+                         .build();
+          }
      }
 
      private WaveOrderDTO toWaveOrderDTO(WaveOrderDetail order) {

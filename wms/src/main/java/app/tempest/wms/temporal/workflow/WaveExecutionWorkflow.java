@@ -2,6 +2,7 @@ package app.tempest.wms.temporal.workflow;
 
 import java.util.Map;
 
+import app.tempest.common.dto.FetchedRatesDTO;
 import app.tempest.common.dto.ShipmentStateDTO;
 import app.tempest.common.dto.WaveStatusDTO;
 import app.tempest.common.dto.requests.WaveExecutionRequest;
@@ -133,11 +134,32 @@ public interface WaveExecutionWorkflow {
      @QueryMethod
      String getBlockingReason();
 
-     /**
-      * Query the current state of all shipments in the wave.
-      * 
-      * @return Map of shipmentId to ShipmentStateDTO
-      */
-     @QueryMethod
-     Map<Long, ShipmentStateDTO> getShipmentStates();
+    /**
+     * Query the current state of all shipments in the wave.
+     * 
+     * @return Map of shipmentId to ShipmentStateDTO
+     */
+    @QueryMethod
+    Map<Long, ShipmentStateDTO> getShipmentStates();
+
+    /**
+     * Signal to fetch shipping rates for a shipment.
+     * This triggers parallel rate fetching from USPS, UPS, and FedEx.
+     * The FedEx call will fail 4 times before succeeding on the 5th attempt
+     * to demonstrate Temporal's retry capabilities.
+     * 
+     * @param shipmentId The shipment ID to fetch rates for
+     */
+    @SignalMethod
+    void fetchRates(Long shipmentId);
+
+    /**
+     * Query the fetched rates for a shipment.
+     * Returns the current state of rate fetching including per-carrier status.
+     * 
+     * @param shipmentId The shipment ID to get rates for
+     * @return The fetched rates DTO with status and rates
+     */
+    @QueryMethod
+    FetchedRatesDTO getFetchedRates(Long shipmentId);
 }

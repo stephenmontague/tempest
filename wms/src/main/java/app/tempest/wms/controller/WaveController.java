@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import app.tempest.common.dto.FetchedRatesDTO;
 import app.tempest.wms.dto.CreateWaveRequest;
 import app.tempest.wms.dto.ReleaseWaveRequest;
 import app.tempest.wms.dto.SelectRateRequest;
@@ -229,6 +230,41 @@ public class WaveController {
 
           waveService.signalShipmentConfirmed(tenantId, waveId, shipmentId);
           return ResponseEntity.ok().build();
+     }
+
+     /**
+      * Signal to fetch rates for a shipment.
+      * This triggers parallel rate fetching from USPS, UPS, and FedEx.
+      */
+     @PostMapping("/{waveId}/shipments/{shipmentId}/fetch-rates")
+     public ResponseEntity<Void> signalFetchRates(
+               @AuthenticationPrincipal Jwt jwt,
+               @PathVariable Long waveId,
+               @PathVariable Long shipmentId) {
+
+          String tenantId = extractTenantId(jwt);
+          log.info("Signaling fetch rates - tenantId: {}, waveId: {}, shipmentId: {}", 
+                    tenantId, waveId, shipmentId);
+
+          waveService.signalFetchRates(tenantId, waveId, shipmentId);
+          return ResponseEntity.ok().build();
+     }
+
+     /**
+      * Get fetched rates for a shipment.
+      */
+     @GetMapping("/{waveId}/shipments/{shipmentId}/rates")
+     public ResponseEntity<FetchedRatesDTO> getFetchedRates(
+               @AuthenticationPrincipal Jwt jwt,
+               @PathVariable Long waveId,
+               @PathVariable Long shipmentId) {
+
+          String tenantId = extractTenantId(jwt);
+          log.info("Getting fetched rates - tenantId: {}, waveId: {}, shipmentId: {}", 
+                    tenantId, waveId, shipmentId);
+
+          FetchedRatesDTO rates = waveService.getFetchedRates(tenantId, waveId, shipmentId);
+          return ResponseEntity.ok(rates);
      }
 
      private String extractTenantId(Jwt jwt) {

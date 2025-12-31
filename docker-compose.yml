@@ -81,7 +81,7 @@ services:
       DB_PASSWORD: tempest
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_ims
       TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_NAMESPACE: default
+      TEMPORAL_NAMESPACE: tempest
     depends_on:
       postgres:
         condition: service_healthy
@@ -108,7 +108,7 @@ services:
       DB_PASSWORD: tempest
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_oms
       TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_NAMESPACE: default
+      TEMPORAL_NAMESPACE: tempest
     depends_on:
       postgres:
         condition: service_healthy
@@ -135,7 +135,7 @@ services:
       DB_PASSWORD: tempest
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_wms
       TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_NAMESPACE: default
+      TEMPORAL_NAMESPACE: tempest
     depends_on:
       postgres:
         condition: service_healthy
@@ -162,7 +162,7 @@ services:
       DB_PASSWORD: tempest
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_sms
       TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_NAMESPACE: default
+      TEMPORAL_NAMESPACE: tempest
     depends_on:
       postgres:
         condition: service_healthy

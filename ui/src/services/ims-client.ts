@@ -97,6 +97,16 @@ export class ImsClient extends BaseServiceClient {
   async getItemCount(): Promise<{ total: number; active: number }> {
     return this.get<{ total: number; active: number }>("/items/count");
   }
+
+  /**
+   * Search items by SKU prefix.
+   * Used for autocomplete/typeahead functionality.
+   * Returns only active items matching the query.
+   */
+  async searchItems(query: string): Promise<Item[]> {
+    const encodedQuery = encodeURIComponent(query);
+    return this.get<Item[]>(`/items/search?q=${encodedQuery}`);
+  }
 }
 
 // Singleton instance

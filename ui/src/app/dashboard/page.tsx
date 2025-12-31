@@ -9,6 +9,9 @@ import { getImsClient } from "@/services/ims-client";
 import { getWmsClient } from "@/services/wms-client";
 import { getSmsClient } from "@/services/sms-client";
 
+// Force dynamic rendering - dashboard data should always be fresh
+export const dynamic = "force-dynamic";
+
 interface DashboardStats {
      orders: { total: number; awaitingWave: number; inProgress: number };
      items: { total: number; active: number };

@@ -1,12 +1,11 @@
 "use client";
 
 import { MainLayout } from "@/components/layout";
-import { PageHeader } from "@/components/shared";
+import { PageHeader, ItemCombobox } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Plus, Trash2, ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
@@ -18,6 +17,7 @@ import { toast } from "sonner";
 interface OrderLine {
   id: string;
   sku: string;
+  itemId?: number;
   quantity: number;
   unitPrice?: number;
 }
@@ -57,6 +57,14 @@ export default function NewOrderPage() {
     setOrderLines(
       orderLines.map((line) =>
         line.id === id ? { ...line, [field]: value } : line
+      )
+    );
+  };
+
+  const updateOrderLineSku = (id: string, sku: string, itemId?: number) => {
+    setOrderLines(
+      orderLines.map((line) =>
+        line.id === id ? { ...line, sku, itemId } : line
       )
     );
   };
@@ -248,23 +256,22 @@ export default function NewOrderPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {orderLines.map((line, index) => (
+              {orderLines.map((line) => (
                 <div
                   key={line.id}
-                  className="flex gap-4 items-end p-4 rounded-lg bg-muted/50"
+                  className="grid grid-cols-[1fr_auto_auto_auto] gap-4 items-end p-4 rounded-lg bg-muted/50"
                 >
-                  <div className="flex-1 space-y-2">
-                    <Label>SKU *</Label>
-                    <Input
+                  <div className="min-w-0 space-y-2">
+                    <Label>Item *</Label>
+                    <ItemCombobox
                       value={line.sku}
-                      onChange={(e) =>
-                        updateOrderLine(line.id, "sku", e.target.value)
+                      onChange={(sku, itemId) =>
+                        updateOrderLineSku(line.id, sku, itemId)
                       }
-                      placeholder="WIDGET-001"
-                      required
+                      placeholder="Select an item..."
                     />
                   </div>
-                  <div className="w-32 space-y-2">
+                  <div className="w-28 space-y-2">
                     <Label>Quantity *</Label>
                     <Input
                       type="number"
@@ -276,7 +283,7 @@ export default function NewOrderPage() {
                       required
                     />
                   </div>
-                  <div className="w-32 space-y-2">
+                  <div className="w-28 space-y-2">
                     <Label>Unit Price</Label>
                     <Input
                       type="number"

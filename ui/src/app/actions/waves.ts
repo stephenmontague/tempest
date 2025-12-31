@@ -293,3 +293,71 @@ export async function signalShipmentConfirmed(waveId: number, shipmentId: number
           };
      }
 }
+
+/**
+ * Carrier rate from rate shopping.
+ */
+export interface CarrierRate {
+     carrier: string;
+     serviceLevel: string;
+     price: number;
+     estimatedDelivery: string;
+}
+
+/**
+ * Fetched rates state.
+ */
+export interface FetchedRatesState {
+     shipmentId: number;
+     status: string;
+     rates: CarrierRate[];
+     uspsStatus?: string;
+     upsStatus?: string;
+     fedexStatus?: string;
+     errorMessage?: string;
+}
+
+/**
+ * Signal to fetch rates for a shipment.
+ * This triggers parallel rate fetching from USPS, UPS, and FedEx.
+ */
+export async function signalFetchRates(waveId: number, shipmentId: number): Promise<ActionResult> {
+     try {
+          const client = getWmsClient();
+
+          await client.signalFetchRates(waveId, shipmentId);
+
+          return { success: true };
+     } catch (error) {
+          console.error("Failed to signal fetch rates:", error);
+          return {
+               success: false,
+               error: error instanceof Error ? error.message : "Failed to fetch rates",
+          };
+     }
+}
+
+/**
+ * Get fetched rates for a shipment.
+ */
+export async function getFetchedRates(
+     waveId: number,
+     shipmentId: number
+): Promise<ActionResult<FetchedRatesState>> {
+     try {
+          const client = getWmsClient();
+
+          const rates = await client.getFetchedRates(waveId, shipmentId);
+
+          return {
+               success: true,
+               data: rates,
+          };
+     } catch (error) {
+          console.error("Failed to get fetched rates:", error);
+          return {
+               success: false,
+               error: error instanceof Error ? error.message : "Failed to get fetched rates",
+          };
+     }
+}
