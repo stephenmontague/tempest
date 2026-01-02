@@ -6,7 +6,7 @@ import app.tempest.common.dto.requests.MarkOrderReservedRequest;
 import app.tempest.common.dto.requests.MarkOrderShippedRequest;
 import app.tempest.common.dto.results.MarkOrderReservedResult;
 import app.tempest.common.dto.results.MarkOrderShippedResult;
-import app.tempest.common.temporal.activities.OmsActivities;
+import app.tempest.common.temporal.activities.oms.OmsActivities;
 import app.tempest.oms.service.OrderService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

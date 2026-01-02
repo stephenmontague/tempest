@@ -1,4 +1,4 @@
-package app.tempest.wms.temporal.activities.remote;
+package app.tempest.common.temporal.activities.sms;
 
 import app.tempest.common.dto.requests.ConfirmShipmentRequest;
 import app.tempest.common.dto.requests.CreateShipmentRequest;
@@ -14,24 +14,26 @@ import io.temporal.activity.ActivityInterface;
 import io.temporal.activity.ActivityMethod;
 
 /**
- * Remote activities for SMS (Shipping Management Service).
- * These activities are executed on the SMS task queue.
+ * SMS Activities interface - shared between services.
+ * SMS implements these activities on the sms-tasks queue.
+ * Other services (OMS, WMS, etc.) call these activities remotely.
  */
 @ActivityInterface
 public interface SmsActivities {
 
-     @ActivityMethod
-     CreateShipmentResult createShipment(CreateShipmentRequest request);
+    @ActivityMethod
+    CreateShipmentResult createShipment(CreateShipmentRequest request);
 
-     @ActivityMethod
-     GenerateShippingLabelResult generateLabel(GenerateShippingLabelRequest request);
+    @ActivityMethod
+    GenerateShippingLabelResult generateLabel(GenerateShippingLabelRequest request);
 
-     @ActivityMethod
-     ConfirmShipmentResult confirmShipment(ConfirmShipmentRequest request);
+    @ActivityMethod
+    ConfirmShipmentResult confirmShipment(ConfirmShipmentRequest request);
 
-     @ActivityMethod
-     FetchRatesResult fetchRates(FetchRatesRequest request);
+    @ActivityMethod
+    FetchRatesResult fetchRates(FetchRatesRequest request);
 
-     @ActivityMethod
-     SelectRateResult selectRate(SelectRateRequest request);
+    @ActivityMethod
+    SelectRateResult selectRate(SelectRateRequest request);
 }
+

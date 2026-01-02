@@ -1,4 +1,4 @@
-package app.tempest.oms.service;
+package app.tempest.oms.temporal;
 
 import java.time.Duration;
 
@@ -20,7 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class OrderWorkflowService {
+public class OrderWorkflowClient {
 
      private final WorkflowClient workflowClient;
 

@@ -1,4 +1,4 @@
-package app.tempest.wms.temporal.activities.remote;
+package app.tempest.common.temporal.activities.sms;
 
 import app.tempest.common.dto.requests.FetchRatesRequest;
 import app.tempest.common.dto.results.FetchRatesResult;
@@ -6,8 +6,9 @@ import io.temporal.activity.ActivityInterface;
 import io.temporal.activity.ActivityMethod;
 
 /**
- * Remote activity for fetching USPS shipping rates.
- * Executed on the SMS task queue.
+ * Activity for fetching USPS shipping rates.
+ * SMS implements this activity on the sms-tasks queue.
+ * Other services (WMS, etc.) call this activity remotely.
  */
 @ActivityInterface
 public interface FetchUSPSRatesActivity {

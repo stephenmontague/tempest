@@ -36,15 +36,15 @@ import app.tempest.common.dto.results.OrderShipmentResult;
 import app.tempest.common.dto.results.WaveExecutionResult;
 import app.tempest.common.dto.requests.UpdateWaveStatusRequest;
 import app.tempest.common.temporal.TaskQueues;
-import app.tempest.common.temporal.activities.OmsActivities;
 import app.tempest.common.dto.results.FetchRatesResult;
-import app.tempest.wms.temporal.activities.CreatePickWaveActivity;
+import app.tempest.common.temporal.activities.ims.ImsActivities;
+import app.tempest.common.temporal.activities.oms.OmsActivities;
+import app.tempest.common.temporal.activities.sms.FetchFedExRatesActivity;
+import app.tempest.common.temporal.activities.sms.FetchUPSRatesActivity;
+import app.tempest.common.temporal.activities.sms.FetchUSPSRatesActivity;
+import app.tempest.common.temporal.activities.sms.SmsActivities;
+import app.tempest.common.temporal.activities.wms.WmsActivities;
 import app.tempest.wms.temporal.activities.UpdateWaveStatusActivity;
-import app.tempest.wms.temporal.activities.remote.FetchFedExRatesActivity;
-import app.tempest.wms.temporal.activities.remote.FetchUPSRatesActivity;
-import app.tempest.wms.temporal.activities.remote.FetchUSPSRatesActivity;
-import app.tempest.wms.temporal.activities.remote.ImsActivities;
-import app.tempest.wms.temporal.activities.remote.SmsActivities;
 import app.tempest.wms.temporal.workflow.WaveExecutionWorkflow;
 import io.temporal.activity.ActivityOptions;
 import io.temporal.common.RetryOptions;
@@ -135,8 +135,8 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
                          .build());
 
      // WMS Activities (local - same task queue as workflow)
-     private final CreatePickWaveActivity createPickWaveActivity = Workflow.newActivityStub(
-               CreatePickWaveActivity.class,
+     private final WmsActivities wmsActivities = Workflow.newActivityStub(
+               WmsActivities.class,
                defaultActivityOptions);
 
      // WMS Activity to update wave status in DB
@@ -246,7 +246,7 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
                               .items(pickItems)
                               .build();
 
-                    createPickWaveActivity.createPickWave(pickRequest);
+                    wmsActivities.createPickWave(pickRequest);
                     orderStatuses.put(order.getOrderId(), "PICKING");
                }
 
@@ -344,32 +344,7 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
                     return handleCancellation(request);
                }
 
-               // Step 9: Mark orders as shipped in OMS
-               currentStep = "MARKING_SHIPPED";
-
-               for (ShipmentStateDTO shipment : shipmentStates.values()) {
-                    if ("SHIPPED".equals(shipment.getStatus())) {
-                         MarkOrderShippedRequest shippedRequest = MarkOrderShippedRequest.builder()
-                                   .orderId(shipment.getOrderId())
-                                   .shipmentId(shipment.getShipmentId())
-                                   .trackingNumber(shipment.getTrackingNumber())
-                                   .carrier(shipment.getCarrier())
-                                   .build();
-                         omsActivities.markOrderShipped(shippedRequest);
-
-                         orderShipments.add(OrderShipmentResult.builder()
-                                   .orderId(shipment.getOrderId())
-                                   .shipmentId(shipment.getShipmentId())
-                                   .trackingNumber(shipment.getTrackingNumber())
-                                   .status("SHIPPED")
-                                   .build());
-
-                         orderStatuses.put(shipment.getOrderId(), "SHIPPED");
-                         ordersShipped++;
-                    }
-               }
-
-               // Step 10: Update wave status in database
+               // Step 9: Update wave status in database
                currentStep = "UPDATING_WAVE_STATUS";
 
                UpdateWaveStatusRequest updateRequest = UpdateWaveStatusRequest.builder()
@@ -563,6 +538,26 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
 
           // Update shipment state
           shipment.setStatus("SHIPPED");
+
+          // Mark order as shipped in OMS immediately (don't wait for all shipments)
+          MarkOrderShippedRequest shippedRequest = MarkOrderShippedRequest.builder()
+                    .orderId(shipment.getOrderId())
+                    .shipmentId(shipment.getShipmentId())
+                    .trackingNumber(shipment.getTrackingNumber())
+                    .carrier(shipment.getCarrier())
+                    .build();
+          omsActivities.markOrderShipped(shippedRequest);
+
+          // Update local tracking state
+          orderShipments.add(OrderShipmentResult.builder()
+                    .orderId(shipment.getOrderId())
+                    .shipmentId(shipment.getShipmentId())
+                    .trackingNumber(shipment.getTrackingNumber())
+                    .status("SHIPPED")
+                    .build());
+
+          orderStatuses.put(shipment.getOrderId(), "SHIPPED");
+          ordersShipped++;
      }
 
      private WaveExecutionResult handleCancellation(WaveExecutionRequest request) {

@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import app.tempest.common.dto.CarrierRateDTO;
 import app.tempest.common.dto.requests.FetchRatesRequest;
 import app.tempest.common.dto.results.FetchRatesResult;
-import app.tempest.sms.temporal.activities.FetchFedExRatesActivity;
+import app.tempest.common.temporal.activities.sms.FetchFedExRatesActivity;
 import io.temporal.activity.Activity;
 import io.temporal.failure.ApplicationFailure;
 import lombok.extern.slf4j.Slf4j;

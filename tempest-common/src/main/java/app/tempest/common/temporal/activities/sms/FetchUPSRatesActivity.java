@@ -1,4 +1,4 @@
-package app.tempest.sms.temporal.activities;
+package app.tempest.common.temporal.activities.sms;
 
 import app.tempest.common.dto.requests.FetchRatesRequest;
 import app.tempest.common.dto.results.FetchRatesResult;
@@ -6,17 +6,13 @@ import io.temporal.activity.ActivityInterface;
 import io.temporal.activity.ActivityMethod;
 
 /**
- * Activity for fetching shipping rates from UPS.
+ * Activity for fetching UPS shipping rates.
+ * SMS implements this activity on the sms-tasks queue.
+ * Other services (WMS, etc.) call this activity remotely.
  */
 @ActivityInterface
 public interface FetchUPSRatesActivity {
 
-    /**
-     * Fetch available shipping rates from UPS.
-     * 
-     * @param request the fetch rates request
-     * @return UPS carrier rates
-     */
     @ActivityMethod
     FetchRatesResult fetchUPSRates(FetchRatesRequest request);
 }

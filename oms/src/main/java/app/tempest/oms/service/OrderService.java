@@ -18,6 +18,7 @@ import app.tempest.oms.entity.Order;
 import app.tempest.oms.entity.OrderLine;
 import app.tempest.oms.repository.OrderLineRepository;
 import app.tempest.oms.repository.OrderRepository;
+import app.tempest.oms.temporal.OrderWorkflowClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -32,7 +33,7 @@ public class OrderService {
 
      private final OrderRepository orderRepository;
      private final OrderLineRepository orderLineRepository;
-     private final OrderWorkflowService orderWorkflowService;
+     private final OrderWorkflowClient orderWorkflowClient;
 
      @Transactional(readOnly = true)
      public List<Order> getOrders(String tenantId, String status, String sku) {
@@ -112,7 +113,7 @@ public class OrderService {
                     .build();
 
           // Execute workflow synchronously - waits for completion
-          OrderIntakeWorkflowResult result = orderWorkflowService.startOrderIntake(workflowRequest);
+          OrderIntakeWorkflowResult result = orderWorkflowClient.startOrderIntake(workflowRequest);
 
           log.info("Order intake workflow completed - orderId: {}, status: {}, externalOrderId: {}, tenant: {}",
                     result.getOrderId(), result.getStatus(), command.externalOrderId(), command.tenantId());
@@ -146,7 +147,7 @@ public class OrderService {
                     .map(order -> {
                          if (order.getWorkflowId() != null) {
                               try {
-                                   orderWorkflowService.signalCancelOrder(order.getWorkflowId(), reason);
+                                   orderWorkflowClient.signalCancelOrder(order.getWorkflowId(), reason);
                               } catch (Exception e) {
                                    log.warn("Failed to signal workflow cancellation: {}", e.getMessage());
                               }
@@ -174,14 +175,14 @@ public class OrderService {
      private Optional<WorkflowStatus> getWorkflowStatus(String workflowId) {
           try {
                // Try OrderFulfillmentWorkflow first
-               String status = orderWorkflowService.getFulfillmentStatus(workflowId);
-               String currentStep = orderWorkflowService.getCurrentStep(workflowId);
-               String blockingReason = orderWorkflowService.getBlockingReason(workflowId);
+               String status = orderWorkflowClient.getFulfillmentStatus(workflowId);
+               String currentStep = orderWorkflowClient.getCurrentStep(workflowId);
+               String blockingReason = orderWorkflowClient.getBlockingReason(workflowId);
                return Optional.of(new WorkflowStatus(status, currentStep, blockingReason));
           } catch (Exception e) {
                // Fall back to OrderIntakeWorkflow
                try {
-                    String status = orderWorkflowService.getOrderIntakeStatus(workflowId);
+                    String status = orderWorkflowClient.getOrderIntakeStatus(workflowId);
                     return Optional.of(new WorkflowStatus(status, null, null));
                } catch (Exception e2) {
                     log.warn("Could not get workflow status for {}: {}", workflowId, e2.getMessage());
