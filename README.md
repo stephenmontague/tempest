@@ -69,48 +69,125 @@ All workflows are **durable, retryable, and resumable** using Temporal.
 
 ---
 
-## 🚀 Getting Started (Local Development)
+## 🚀 Getting Started
 
 ### Prerequisites
 
--    Java 21
--    Node.js 18+
--    Docker & Docker Compose
--    Maven
--    Temporal (local or Temporal Cloud account)
+-    **Docker & Docker Compose** — required for quick start
+-    **Java 21 + Maven** — only needed for manual development
+-    **Node.js 18+** — only needed for manual UI development
 
 ---
 
-### 1. Start Infrastructure
+### Quick Start (Docker)
 
-Start PostgreSQL and Temporal (example with Docker):
+The easiest way to run Tempest is with the included demo script, which starts everything in Docker containers:
 
 ```bash
-docker compose up -d
+./demo.sh up
 ```
 
-(Exact `docker-compose.yml` may evolve as the project matures.)
+This starts:
+-    PostgreSQL database
+-    Temporal server + UI
+-    All backend services (IMS, OMS, WMS, SMS)
+-    Next.js UI
+
+**Access points:**
+
+| Service      | URL                      |
+|--------------|--------------------------|
+| UI           | http://localhost:3000    |
+| Temporal UI  | http://localhost:8080    |
+| IMS API      | http://localhost:8081    |
+| OMS API      | http://localhost:8082    |
+| WMS API      | http://localhost:8083    |
+| SMS API      | http://localhost:8084    |
+
+**Useful commands:**
+
+```bash
+./demo.sh status          # Check service health
+./demo.sh logs <service>  # Tail logs (e.g., ./demo.sh logs ims)
+./demo.sh down            # Stop all services
+./demo.sh clean           # Remove all containers and volumes (fresh start)
+```
 
 ---
 
-### 2. Run Backend Services
+### Demonstrating Temporal Resilience
 
-Each service can be run independently:
+One of Tempest's key features is demonstrating how Temporal handles service failures. Try this:
+
+1. Start a wave workflow in the UI
+2. Kill a service mid-workflow:
+   ```bash
+   ./demo.sh kill ims
+   ```
+3. Watch the Temporal UI at http://localhost:8080 — the workflow will pause and retry
+4. Restart the service:
+   ```bash
+   ./demo.sh start ims
+   ```
+5. Watch the workflow automatically resume and complete
+
+---
+
+### Manual Development
+
+For active development, you may want to run services individually:
+
+**1. Build the shared library:**
+
+```bash
+cd tempest-common
+mvn clean install
+```
+
+This installs the shared DTOs and utilities used by all backend services.
+
+**2. Create local configuration files:**
+
+Each service needs an `application-local.yml` file for local development. These files are gitignored.
+
+Create `ims/src/main/resources/application-local.yml`:
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/tempest_ims
+    username: your_postgres_user
+    password: your_postgres_password
+
+temporal:
+  namespace: tempest
+  address: localhost:7233
+
+logging:
+  level:
+    app.tempest.ims: DEBUG
+```
+
+Repeat for each service (`oms`, `wms`, `sms`), adjusting:
+- Database name: `tempest_oms`, `tempest_wms`, `tempest_sms`
+- Logging package: `app.tempest.oms`, `app.tempest.wms`, `app.tempest.sms`
+
+**3. Start infrastructure** (or use the demo stack for Temporal):
+
+```bash
+docker compose up -d postgres temporal temporal-ui
+```
+
+**4. Run backend services:**
 
 ```bash
 cd ims
-./mvnw spring-boot:run
+mvn spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
-Repeat for:
+Repeat for `oms`, `wms`, and `sms`.
 
--    `oms`
--    `wms`
--    `sms`
-
----
-
-### 3. Run the UI
+**5. Run the UI:**
 
 ```bash
 cd ui
@@ -118,11 +195,45 @@ npm install
 npm run dev
 ```
 
-The UI will be available at:
+---
 
+### Using Temporal CLI (Alternative)
+
+If you prefer running Temporal locally via the CLI instead of Docker, you can use the `temporal` CLI tool:
+
+**1. Install the Temporal CLI:**
+
+```bash
+# macOS (Homebrew)
+brew install temporal
+
+# Or download from: https://temporal.io/download
 ```
-http://localhost:3000
+
+**2. Start a local Temporal dev server:**
+
+```bash
+temporal server start-dev --namespace tempest
 ```
+
+This starts Temporal on `localhost:7233` with the UI at `http://localhost:8233`.
+
+**3. Start just the database:**
+
+```bash
+docker compose up -d postgres
+```
+
+**4. Run the backend services** pointing to your local Temporal:
+
+```bash
+cd ims
+TEMPORAL_ADDRESS=localhost:7233 mvn spring-boot:run
+```
+
+Repeat for `oms`, `wms`, and `sms`.
+
+**Note:** When using the Temporal CLI, the UI is available at port `8233` instead of `8080`.
 
 ---
 
@@ -130,9 +241,9 @@ http://localhost:3000
 
 All services use standard Spring Boot configuration:
 
--    `application.properties` contains safe defaults
+-    `application.yml` contains safe defaults
 -    Sensitive values (DB passwords, Temporal credentials, etc.) are supplied via environment variables
--    Local-only overrides can be placed in `application-local.properties` (ignored by Git)
+-    Local-only overrides can be placed in `application-local.yml` (ignored by Git, see Manual Development above)
 
 ---
 
