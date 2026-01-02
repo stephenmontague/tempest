@@ -1,14 +1,16 @@
 # =============================================================================
-# Tempest WMS - Docker Compose for Demo
+# Tempest WMS - Docker Compose (Self-contained with Temporal)
 # =============================================================================
-# This setup is optimized for demonstrating Temporal's orchestration and
-# resilience capabilities. Services can be killed and restarted individually
-# to show how Temporal handles failures.
+# This setup includes everything needed to run the full Tempest WMS demo,
+# including a local Temporal cluster.
 #
 # Usage:
 #   ./demo.sh up      - Start all services
 #   ./demo.sh kill X  - Kill a specific service (ims, oms, wms, sms)
 #   ./demo.sh start X - Restart a killed service
+#
+# For local development with an external Temporal cluster:
+#   Create a docker-compose.override.yml file to customize the setup.
 # =============================================================================
 
 services:
@@ -35,8 +37,12 @@ services:
       retries: 10
     restart: "no"
 
+  # ---------------------------------------------------------------------------
+  # Temporal Cluster (for workflow orchestration)
+  # ---------------------------------------------------------------------------
+
   temporal:
-    image: temporalio/auto-setup:latest
+    image: temporalio/auto-setup:1.24.2
     container_name: tempest-temporal
     ports:
       - "7233:7233"
@@ -46,22 +52,48 @@ services:
       - POSTGRES_USER=tempest
       - POSTGRES_PWD=tempest
       - POSTGRES_SEEDS=postgres
-      - SKIP_SCHEMA_SETUP=false
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "tctl", "--address", "temporal:7233", "cluster", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     restart: "no"
 
   temporal-ui:
-    image: temporalio/ui:latest
+    image: temporalio/ui:2.26.2
     container_name: tempest-temporal-ui
     ports:
       - "8080:8080"
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000,http://localhost:3001
     depends_on:
       - temporal
+    restart: "no"
+
+  temporal-admin-tools:
+    image: temporalio/admin-tools:1.24.2
+    container_name: tempest-temporal-admin
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    depends_on:
+      temporal:
+        condition: service_healthy
+    # Create the tempest namespace on startup
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        sleep 5
+        tctl --address temporal:7233 namespace describe tempest || \
+        tctl --address temporal:7233 namespace register tempest --retention 1d
+        echo "Namespace 'tempest' is ready"
+        # Keep container running for debugging if needed
+        tail -f /dev/null
     restart: "no"
 
   # ---------------------------------------------------------------------------
@@ -85,8 +117,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      temporal:
-        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/actuator/health"]
       interval: 10s
@@ -112,8 +142,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      temporal:
-        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8082/actuator/health"]
       interval: 10s
@@ -139,8 +167,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      temporal:
-        condition: service_started
+
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8083/actuator/health"]
       interval: 10s
@@ -166,8 +193,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      temporal:
-        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8084/actuator/health"]
       interval: 10s
@@ -204,4 +229,3 @@ services:
 
 volumes:
   postgres_data:
-
