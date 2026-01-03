@@ -19,26 +19,30 @@ public class WmsActivitiesImpl implements WmsActivities {
 
     @Override
     public CreatePickWaveResult createPickWave(CreatePickWaveRequest request) {
-        log.info("Creating pick wave - orderId: {}, facilityId: {}, strategy: {}",
-                request.getOrderId(), request.getFacilityId(), request.getStrategy());
+        log.info("Creating pick tasks for wave - waveId: {}, facilityId: {}, strategy: {}, items: {}",
+                request.getWaveId(), request.getFacilityId(), request.getStrategy(),
+                request.getItems() != null ? request.getItems().size() : 0);
 
         // Stub implementation for now
         // TODO: Implement actual wave creation logic
-        // 1. Check if wave for orderId already exists (idempotency)
-        // 2. If exists, return existing wave
+        // 1. Check if pick tasks for waveId already exist (idempotency)
+        // 2. If exists, return existing pick task IDs
         // 3. Validate facility exists and is active
-        // 4. Create Wave entity with status CREATED
-        // 5. Create PickTask entities for each item
-        // 6. Return wave details
+        // 4. Create PickTask entities for each item (grouped by orderId)
+        // 5. Return pick task details
 
-        // Simulate wave and task ID generation
-        Long waveId = System.currentTimeMillis();
-        List<Long> pickTaskIds = List.of(waveId + 1, waveId + 2);
+        // Simulate pick task ID generation
+        Long baseId = System.currentTimeMillis();
+        int itemCount = request.getItems() != null ? request.getItems().size() : 0;
+        List<Long> pickTaskIds = new java.util.ArrayList<>();
+        for (int i = 0; i < itemCount; i++) {
+            pickTaskIds.add(baseId + i);
+        }
 
-        log.info("Pick wave created - waveId: {}, pickTasks: {}", waveId, pickTaskIds.size());
+        log.info("Pick tasks created for wave {} - pickTasks: {}", request.getWaveId(), pickTaskIds.size());
 
         return CreatePickWaveResult.builder()
-                .waveId(waveId)
+                .waveId(request.getWaveId())
                 .status("CREATED")
                 .pickTaskIds(pickTaskIds)
                 .alreadyExisted(false)

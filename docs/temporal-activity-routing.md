@@ -39,7 +39,7 @@ flowchart TB
     subgraph omsService [OMS Service]
         OmsActivitiesImpl["OmsActivitiesImpl"]
         OmsWorker["OMS Worker"]
-        OrderFulfillmentWF["OrderFulfillmentWorkflow"]
+        OrderIntakeWF["OrderIntakeWorkflow"]
     end
 
     subgraph smsService [SMS Service]
@@ -88,10 +88,6 @@ flowchart TB
     WaveExecutionWF -->|"fetchFedExRates()"| SMSQueue
     WaveExecutionWF -->|"wmsActivities.createPickWave()"| WMSQueue
 
-    %% Cross-service calls from OrderFulfillmentWorkflow
-    OrderFulfillmentWF -->|"imsActivities.allocate()"| IMSQueue
-    OrderFulfillmentWF -->|"smsActivities.createShipment()"| SMSQueue
-    OrderFulfillmentWF -->|"wmsActivities.createPickWave()"| WMSQueue
 ```
 
 ## Key Concepts

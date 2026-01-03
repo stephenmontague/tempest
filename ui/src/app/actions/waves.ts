@@ -9,6 +9,11 @@ export interface CreateWaveRequest {
      orderIds: number[];
 }
 
+/**
+ * Fulfillment mode for wave execution.
+ */
+export type FulfillmentMode = "STANDARD" | "EXPRESS" | "AUTO_SHIP";
+
 export interface ReleaseWaveRequest {
      orders: {
           orderId: number;
@@ -28,6 +33,12 @@ export interface ReleaseWaveRequest {
                country?: string;
           };
      }[];
+     /** Fulfillment mode - defaults to STANDARD if not specified */
+     fulfillmentMode?: FulfillmentMode;
+     /** Default carrier for EXPRESS and AUTO_SHIP modes */
+     defaultCarrier?: string;
+     /** Default service level for EXPRESS and AUTO_SHIP modes */
+     defaultServiceLevel?: string;
 }
 
 export interface ActionResult<T = void> {

@@ -144,6 +144,9 @@ public class WaveService {
                     .facilityId(wave.getFacilityId())
                     .waveNumber(wave.getWaveNumber())
                     .orders(waveOrders)
+                    .fulfillmentMode(request.getFulfillmentMode())
+                    .defaultCarrier(request.getDefaultCarrier())
+                    .defaultServiceLevel(request.getDefaultServiceLevel())
                     .build();
 
           // Start the workflow

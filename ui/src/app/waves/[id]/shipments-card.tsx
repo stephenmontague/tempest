@@ -25,6 +25,7 @@ export function ShipmentsCard({ waveId, currentStep, onOpenRateModal }: Shipment
      const showShipments =
           currentStep === "WAITING_FOR_SHIPMENTS" ||
           currentStep === "CREATING_SHIPMENTS" ||
+          currentStep === "AUTO_SHIPPING" ||
           currentStep === "MARKING_SHIPPED" ||
           currentStep === "COMPLETED";
 
@@ -165,8 +166,9 @@ export function ShipmentsCard({ waveId, currentStep, onOpenRateModal }: Shipment
 
                               {/* Actions based on status */}
                               <div className="flex flex-wrap gap-2 pt-2">
-                                   {/* Get Rates - available when CREATED */}
-                                   {(shipment.status === "CREATED" || shipment.status === "RATE_SELECTED") && (
+                                   {/* Get Rates - available when CREATED and carrier is PENDING (STANDARD mode only) */}
+                                   {(shipment.status === "CREATED" || shipment.status === "RATE_SELECTED") && 
+                                    shipment.carrier === "PENDING" && (
                                         <Button
                                              variant="outline"
                                              size="sm"

@@ -7,7 +7,6 @@ import org.springframework.stereotype.Service;
 import app.tempest.common.dto.requests.OrderIntakeWorkflowRequest;
 import app.tempest.common.dto.results.OrderIntakeWorkflowResult;
 import app.tempest.common.temporal.TaskQueues;
-import app.tempest.oms.temporal.workflow.OrderFulfillmentWorkflow;
 import app.tempest.oms.temporal.workflow.OrderIntakeWorkflow;
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowOptions;
@@ -72,78 +71,5 @@ public class OrderWorkflowClient {
           OrderIntakeWorkflow workflow = workflowClient.newWorkflowStub(
                     OrderIntakeWorkflow.class, workflowId);
           return workflow.getStatus();
-     }
-
-     /**
-      * Query the status of an OrderFulfillmentWorkflow.
-      * 
-      * @param workflowId the workflow ID
-      * @return the current fulfillment status
-      */
-     public String getFulfillmentStatus(String workflowId) {
-          OrderFulfillmentWorkflow workflow = workflowClient.newWorkflowStub(
-                    OrderFulfillmentWorkflow.class, workflowId);
-          return workflow.getFulfillmentStatus();
-     }
-
-     /**
-      * Query the current step of an OrderFulfillmentWorkflow.
-      * 
-      * @param workflowId the workflow ID
-      * @return the current step
-      */
-     public String getCurrentStep(String workflowId) {
-          OrderFulfillmentWorkflow workflow = workflowClient.newWorkflowStub(
-                    OrderFulfillmentWorkflow.class, workflowId);
-          return workflow.getCurrentStep();
-     }
-
-     /**
-      * Query the blocking reason of an OrderFulfillmentWorkflow.
-      * 
-      * @param workflowId the workflow ID
-      * @return the blocking reason (null if not blocked)
-      */
-     public String getBlockingReason(String workflowId) {
-          OrderFulfillmentWorkflow workflow = workflowClient.newWorkflowStub(
-                    OrderFulfillmentWorkflow.class, workflowId);
-          return workflow.getBlockingReason();
-     }
-
-     /**
-      * Signal pick completion for an OrderFulfillmentWorkflow.
-      * 
-      * @param workflowId the workflow ID
-      */
-     public void signalPickCompleted(String workflowId) {
-          log.info("Signaling pick completed - workflowId: {}", workflowId);
-          OrderFulfillmentWorkflow workflow = workflowClient.newWorkflowStub(
-                    OrderFulfillmentWorkflow.class, workflowId);
-          workflow.pickCompleted();
-     }
-
-     /**
-      * Signal pack completion for an OrderFulfillmentWorkflow.
-      * 
-      * @param workflowId the workflow ID
-      */
-     public void signalPackCompleted(String workflowId) {
-          log.info("Signaling pack completed - workflowId: {}", workflowId);
-          OrderFulfillmentWorkflow workflow = workflowClient.newWorkflowStub(
-                    OrderFulfillmentWorkflow.class, workflowId);
-          workflow.packCompleted();
-     }
-
-     /**
-      * Signal order cancellation for an OrderFulfillmentWorkflow.
-      * 
-      * @param workflowId the workflow ID
-      * @param reason     the cancellation reason
-      */
-     public void signalCancelOrder(String workflowId, String reason) {
-          log.info("Signaling order cancellation - workflowId: {}, reason: {}", workflowId, reason);
-          OrderFulfillmentWorkflow workflow = workflowClient.newWorkflowStub(
-                    OrderFulfillmentWorkflow.class, workflowId);
-          workflow.cancelOrder(reason);
      }
 }

@@ -25,7 +25,10 @@ import {
      cancelWave,
      getWaveWorkflowStatus,
      ReleaseWaveRequest,
+     FulfillmentMode,
 } from "@/app/actions/waves";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
 import { ShipmentsCard } from "./shipments-card";
 import { RateShoppingModal } from "./rate-shopping-modal";
@@ -62,7 +65,13 @@ export function WaveDetailClient({
      const [isPending, startTransition] = useTransition();
      const [cancelReason, setCancelReason] = useState("");
      const [showCancelDialog, setShowCancelDialog] = useState(false);
+     const [showReleaseDialog, setShowReleaseDialog] = useState(false);
      const [rateModalShipmentId, setRateModalShipmentId] = useState<number | null>(null);
+
+     // Release dialog state
+     const [fulfillmentMode, setFulfillmentMode] = useState<FulfillmentMode>("STANDARD");
+     const [defaultCarrier, setDefaultCarrier] = useState("USPS");
+     const [defaultServiceLevel, setDefaultServiceLevel] = useState("GROUND");
 
      const terminalStates = ["COMPLETED", "CANCELLED", "FAILED"];
      const isTerminal = terminalStates.includes(initialStatus);
@@ -97,7 +106,7 @@ export function WaveDetailClient({
 
      const handleRelease = () => {
           startTransition(async () => {
-               // Build release request with order details
+               // Build release request with order details and fulfillment mode
                const request: ReleaseWaveRequest = {
                     orders: orders.map((order) => ({
                          orderId: order.id,
@@ -105,14 +114,24 @@ export function WaveDetailClient({
                          orderLines: [], // Would need to fetch from backend
                          shipTo: undefined,
                     })),
+                    fulfillmentMode,
+                    defaultCarrier: fulfillmentMode !== "STANDARD" ? defaultCarrier : undefined,
+                    defaultServiceLevel: fulfillmentMode !== "STANDARD" ? defaultServiceLevel : undefined,
                };
 
                const result = await releaseWave(waveId, request);
 
                if (result.success) {
+                    const modeDescription =
+                         fulfillmentMode === "AUTO_SHIP"
+                              ? "Auto-ship mode - orders will be shipped automatically"
+                              : fulfillmentMode === "EXPRESS"
+                              ? "Express mode - using default carrier"
+                              : "Standard mode - full HITL";
                     toast.success("Wave released successfully", {
-                         description: "Workflow started - monitoring progress",
+                         description: modeDescription,
                     });
+                    setShowReleaseDialog(false);
                     router.refresh();
                } else {
                     toast.error("Failed to release wave", {
@@ -187,14 +206,133 @@ export function WaveDetailClient({
                     <CardContent className="space-y-3">
                          {/* Release Wave */}
                          {canRelease && (
-                              <Button className="w-full justify-start" onClick={handleRelease} disabled={isPending}>
-                                   {isPending ? (
-                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                   ) : (
-                                        <Play className="h-4 w-4 mr-2" />
-                                   )}
-                                   Release Wave
-                              </Button>
+                              <Dialog open={showReleaseDialog} onOpenChange={setShowReleaseDialog}>
+                                   <DialogTrigger asChild>
+                                        <Button className="w-full justify-start" disabled={isPending}>
+                                             <Play className="h-4 w-4 mr-2" />
+                                             Release Wave
+                                        </Button>
+                                   </DialogTrigger>
+                                   <DialogContent className="sm:max-w-md">
+                                        <DialogHeader>
+                                             <DialogTitle>Release Wave</DialogTitle>
+                                             <DialogDescription>
+                                                  Choose how this wave should be fulfilled. This affects the level of
+                                                  human interaction required.
+                                             </DialogDescription>
+                                        </DialogHeader>
+                                        <div className="space-y-4 py-4">
+                                             <div className="space-y-3">
+                                                  <Label>Fulfillment Mode</Label>
+                                                  <RadioGroup
+                                                       value={fulfillmentMode}
+                                                       onValueChange={(value) =>
+                                                            setFulfillmentMode(value as FulfillmentMode)
+                                                       }
+                                                       className="space-y-2">
+                                                       <div className="flex items-start space-x-3">
+                                                            <RadioGroupItem
+                                                                 value="STANDARD"
+                                                                 id="standard"
+                                                                 className="mt-1"
+                                                            />
+                                                            <div>
+                                                                 <Label
+                                                                      htmlFor="standard"
+                                                                      className="font-medium cursor-pointer">
+                                                                      Standard
+                                                                 </Label>
+                                                                 <p className="text-sm text-muted-foreground">
+                                                                      Full HITL with rate shopping, manual label
+                                                                      printing, and ship confirmation
+                                                                 </p>
+                                                            </div>
+                                                       </div>
+                                                       <div className="flex items-start space-x-3">
+                                                            <RadioGroupItem
+                                                                 value="EXPRESS"
+                                                                 id="express"
+                                                                 className="mt-1"
+                                                            />
+                                                            <div>
+                                                                 <Label
+                                                                      htmlFor="express"
+                                                                      className="font-medium cursor-pointer">
+                                                                      Express
+                                                                 </Label>
+                                                                 <p className="text-sm text-muted-foreground">
+                                                                      Skip rate shopping, use default carrier. Manual
+                                                                      label and ship confirmation.
+                                                                 </p>
+                                                            </div>
+                                                       </div>
+                                                       <div className="flex items-start space-x-3">
+                                                            <RadioGroupItem
+                                                                 value="AUTO_SHIP"
+                                                                 id="auto-ship"
+                                                                 className="mt-1"
+                                                            />
+                                                            <div>
+                                                                 <Label
+                                                                      htmlFor="auto-ship"
+                                                                      className="font-medium cursor-pointer">
+                                                                      Auto-Ship
+                                                                 </Label>
+                                                                 <p className="text-sm text-muted-foreground">
+                                                                      Fully automated after packing. Labels generated
+                                                                      and shipments confirmed automatically.
+                                                                 </p>
+                                                            </div>
+                                                       </div>
+                                                  </RadioGroup>
+                                             </div>
+
+                                             {fulfillmentMode !== "STANDARD" && (
+                                                  <div className="space-y-3 pt-2 border-t">
+                                                       <div className="space-y-2">
+                                                            <Label htmlFor="carrier">Default Carrier</Label>
+                                                            <Select
+                                                                 value={defaultCarrier}
+                                                                 onValueChange={setDefaultCarrier}>
+                                                                 <SelectTrigger id="carrier">
+                                                                      <SelectValue />
+                                                                 </SelectTrigger>
+                                                                 <SelectContent>
+                                                                      <SelectItem value="USPS">USPS</SelectItem>
+                                                                      <SelectItem value="UPS">UPS</SelectItem>
+                                                                      <SelectItem value="FEDEX">FedEx</SelectItem>
+                                                                 </SelectContent>
+                                                            </Select>
+                                                       </div>
+                                                       <div className="space-y-2">
+                                                            <Label htmlFor="serviceLevel">Service Level</Label>
+                                                            <Select
+                                                                 value={defaultServiceLevel}
+                                                                 onValueChange={setDefaultServiceLevel}>
+                                                                 <SelectTrigger id="serviceLevel">
+                                                                      <SelectValue />
+                                                                 </SelectTrigger>
+                                                                 <SelectContent>
+                                                                      <SelectItem value="GROUND">Ground</SelectItem>
+                                                                      <SelectItem value="PRIORITY">Priority</SelectItem>
+                                                                      <SelectItem value="EXPRESS">Express</SelectItem>
+                                                                 </SelectContent>
+                                                            </Select>
+                                                       </div>
+                                                  </div>
+                                             )}
+                                        </div>
+                                        <DialogFooter>
+                                             <Button variant="outline" onClick={() => setShowReleaseDialog(false)}>
+                                                  Cancel
+                                             </Button>
+                                             <Button onClick={handleRelease} disabled={isPending}>
+                                                  {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                                                  Release Wave
+                                             </Button>
+                                        </DialogFooter>
+                                   </DialogContent>
+                              </Dialog>
                          )}
 
                          {/* Signal Picks Complete */}

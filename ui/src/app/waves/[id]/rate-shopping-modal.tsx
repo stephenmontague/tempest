@@ -1,12 +1,13 @@
 "use client";
 
 import {
-     signalRateSelected,
-     signalFetchRates,
-     getFetchedRates,
      CarrierRate,
      FetchedRatesState,
+     getFetchedRates,
+     signalFetchRates,
+     signalRateSelected,
 } from "@/app/actions/waves";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
      Dialog,
@@ -18,10 +19,9 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, Clock, DollarSign, Loader2, RefreshCw, Truck, XCircle, AlertTriangle } from "lucide-react";
+import { CheckCircle2, Clock, DollarSign, Loader2, RefreshCw, Truck, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 interface RateShoppingModalProps {
@@ -213,12 +213,6 @@ export function RateShoppingModal({ waveId, shipmentId, open, onOpenChange }: Ra
                                    <div className="border rounded-lg p-3 text-center">
                                         <div className="font-medium mb-2">FedEx</div>
                                         {getCarrierStatusBadge(fetchState.fedexStatus)}
-                                        {fetchState.fedexStatus === "FETCHING" && (
-                                             <div className="text-xs text-amber-600 mt-1 flex items-center justify-center gap-1">
-                                                  <AlertTriangle className="h-3 w-3" />
-                                                  Retrying...
-                                             </div>
-                                        )}
                                    </div>
                               </div>
                               <div className="text-center text-sm text-muted-foreground">
@@ -266,7 +260,9 @@ export function RateShoppingModal({ waveId, shipmentId, open, onOpenChange }: Ra
                                                                  {rate.estimatedDelivery}
                                                             </div>
                                                        </div>
-                                                       <div className="text-lg font-semibold">${rate.price.toFixed(2)}</div>
+                                                       <div className="text-lg font-semibold">
+                                                            ${rate.price.toFixed(2)}
+                                                       </div>
                                                   </Label>
                                              </div>
                                         );

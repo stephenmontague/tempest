@@ -65,6 +65,14 @@ export interface CreateWaveRequest {
 }
 
 /**
+ * Fulfillment mode for wave execution.
+ * - STANDARD: Full HITL with rate shopping, manual label, manual ship confirm
+ * - EXPRESS: Skip rate shopping, use default carrier, manual label and ship confirm
+ * - AUTO_SHIP: Fully automated after packing - auto label and auto ship confirm
+ */
+export type FulfillmentMode = "STANDARD" | "EXPRESS" | "AUTO_SHIP";
+
+/**
  * Request to release a wave.
  */
 export interface ReleaseWaveRequest {
@@ -86,6 +94,12 @@ export interface ReleaseWaveRequest {
       country?: string;
     };
   }[];
+  /** Fulfillment mode - defaults to STANDARD if not specified */
+  fulfillmentMode?: FulfillmentMode;
+  /** Default carrier for EXPRESS and AUTO_SHIP modes */
+  defaultCarrier?: string;
+  /** Default service level for EXPRESS and AUTO_SHIP modes */
+  defaultServiceLevel?: string;
 }
 
 /**

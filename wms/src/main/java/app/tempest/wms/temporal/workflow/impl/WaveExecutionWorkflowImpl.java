@@ -110,6 +110,11 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
      private String tenantId;
      private int totalOrders = 0;
 
+     // Fulfillment mode configuration
+     private String fulfillmentMode = "STANDARD";
+     private String defaultCarrier;
+     private String defaultServiceLevel;
+
      // Default activity options with retry
      private final ActivityOptions defaultActivityOptions = ActivityOptions.newBuilder()
                .setStartToCloseTimeout(Duration.ofSeconds(30))
@@ -180,6 +185,11 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
           this.tenantId = request.getTenantId();
           this.totalOrders = request.getOrders().size();
 
+          // Initialize fulfillment mode configuration
+          this.fulfillmentMode = request.getFulfillmentMode() != null ? request.getFulfillmentMode() : "STANDARD";
+          this.defaultCarrier = request.getDefaultCarrier();
+          this.defaultServiceLevel = request.getDefaultServiceLevel();
+
           // Initialize order statuses
           for (WaveOrderDTO order : request.getOrders()) {
                orderStatuses.put(order.getOrderId(), "PENDING");
@@ -224,31 +234,36 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
                     orderStatuses.put(order.getOrderId(), "RESERVED");
                }
 
-               // Step 3: Create pick tasks for the wave
+               // Step 3: Create pick tasks for the wave (single activity call for all orders)
                currentStep = "CREATING_PICK_TASKS";
                status = "PICKING";
 
+               // Collect all pick items from all orders into a single list
+               List<PickItemDTO> allPickItems = new ArrayList<>();
                for (WaveOrderDTO order : request.getOrders()) {
                     if (failedOrderIds.contains(order.getOrderId()))
                          continue;
 
-                    List<PickItemDTO> pickItems = order.getOrderLines().stream()
+                    List<PickItemDTO> orderPickItems = order.getOrderLines().stream()
                               .map(line -> PickItemDTO.builder()
+                                        .orderId(order.getOrderId())
                                         .sku(line.getSku())
                                         .quantity(line.getQuantity())
                                         .build())
                               .toList();
-
-                    CreatePickWaveRequest pickRequest = CreatePickWaveRequest.builder()
-                              .orderId(order.getOrderId())
-                              .facilityId(request.getFacilityId())
-                              .strategy("WAVE")
-                              .items(pickItems)
-                              .build();
-
-                    wmsActivities.createPickWave(pickRequest);
+                    allPickItems.addAll(orderPickItems);
                     orderStatuses.put(order.getOrderId(), "PICKING");
                }
+
+               // Create pick tasks for the entire wave in a single activity call
+               CreatePickWaveRequest pickRequest = CreatePickWaveRequest.builder()
+                         .waveId(waveId)
+                         .facilityId(request.getFacilityId())
+                         .strategy("WAVE")
+                         .items(allPickItems)
+                         .build();
+
+               wmsActivities.createPickWave(pickRequest);
 
                // Step 4: Wait for all picks to complete
                currentStep = "WAITING_FOR_PICKS";
@@ -306,39 +321,54 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
                     }
                }
 
-               // Step 8: HITL - Wait for all shipments to be confirmed
-               currentStep = "WAITING_FOR_SHIPMENTS";
-               blockingReason = "Waiting for shipments: print labels and confirm shipped";
+               // Step 8: Handle shipments based on fulfillment mode
+               if ("AUTO_SHIP".equals(fulfillmentMode)) {
+                    // AUTO_SHIP: Fully automated - generate labels and confirm all shipments
+                    currentStep = "AUTO_SHIPPING";
+                    autoShipAllOrders();
+               } else {
+                    // STANDARD or EXPRESS: HITL - Wait for all shipments to be confirmed
+                    currentStep = "WAITING_FOR_SHIPMENTS";
+                    blockingReason = "Waiting for shipments: print labels and confirm shipped";
 
-               // Process label generation requests as they come in
-               while (!allShipmentsConfirmed() && !cancelled) {
-                    // Wait for either a rate fetch, label request, a confirmation, or cancellation
-                    Workflow.await(() -> !shipmentsToFetchRates.isEmpty() ||
-                              !shipmentsToGenerateLabel.isEmpty() ||
-                              !shipmentsToConfirm.isEmpty() ||
-                              allShipmentsConfirmed() ||
-                              cancelled);
+                    // Process label generation requests as they come in
+                    while (!allShipmentsConfirmed() && !cancelled) {
+                         // Wait for either a rate fetch, label request, a confirmation, or cancellation
+                         // Note: For EXPRESS mode, rate fetching is skipped (UI won't show fetch rates
+                         // button)
+                         Workflow.await(() -> !shipmentsToFetchRates.isEmpty() ||
+                                   !shipmentsToGenerateLabel.isEmpty() ||
+                                   !shipmentsToConfirm.isEmpty() ||
+                                   allShipmentsConfirmed() ||
+                                   cancelled);
 
-                    // Process pending rate fetches (parallel carrier calls)
-                    for (Long shipmentId : new HashSet<>(shipmentsToFetchRates)) {
-                         shipmentsToFetchRates.remove(shipmentId);
-                         fetchRatesForShipment(shipmentId);
+                         // Process pending rate fetches (parallel carrier calls) - only for STANDARD
+                         // mode
+                         if ("STANDARD".equals(fulfillmentMode)) {
+                              for (Long shipmentId : new HashSet<>(shipmentsToFetchRates)) {
+                                   shipmentsToFetchRates.remove(shipmentId);
+                                   fetchRatesForShipment(shipmentId);
+                              }
+                         } else {
+                              // EXPRESS mode: clear any rate fetch requests (shouldn't happen, but be safe)
+                              shipmentsToFetchRates.clear();
+                         }
+
+                         // Process pending label generations
+                         for (Long shipmentId : new HashSet<>(shipmentsToGenerateLabel)) {
+                              shipmentsToGenerateLabel.remove(shipmentId);
+                              generateLabelForShipment(shipmentId);
+                         }
+
+                         // Process pending confirmations
+                         for (Long shipmentId : new HashSet<>(shipmentsToConfirm)) {
+                              shipmentsToConfirm.remove(shipmentId);
+                              confirmShipment(shipmentId);
+                         }
                     }
 
-                    // Process pending label generations
-                    for (Long shipmentId : new HashSet<>(shipmentsToGenerateLabel)) {
-                         shipmentsToGenerateLabel.remove(shipmentId);
-                         generateLabelForShipment(shipmentId);
-                    }
-
-                    // Process pending confirmations
-                    for (Long shipmentId : new HashSet<>(shipmentsToConfirm)) {
-                         shipmentsToConfirm.remove(shipmentId);
-                         confirmShipment(shipmentId);
-                    }
+                    blockingReason = null;
                }
-
-               blockingReason = null;
 
                if (cancelled) {
                     return handleCancellation(request);
@@ -424,12 +454,20 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
 
      private ShipmentStateDTO createShipmentForOrder(WaveOrderDTO order, Long facilityId) {
           ShipToDTO shipTo = order.getShipTo();
+
+          // For EXPRESS mode, use default carrier; for STANDARD, user will select rate
+          String carrier = "STANDARD".equals(fulfillmentMode) ? "PENDING"
+                    : (defaultCarrier != null ? defaultCarrier : "USPS");
+
+          String serviceLevel = "STANDARD".equals(fulfillmentMode) ? "STANDARD"
+                    : (defaultServiceLevel != null ? defaultServiceLevel : "GROUND");
+
           CreateShipmentRequest shipmentRequest = CreateShipmentRequest.builder()
                     .tenantId(tenantId)
                     .orderId(order.getOrderId())
                     .facilityId(facilityId)
-                    .carrier("PENDING") // Default - user can select rate
-                    .serviceLevel("STANDARD")
+                    .carrier(carrier)
+                    .serviceLevel(serviceLevel)
                     .shipTo(shipTo)
                     .build();
 
@@ -439,8 +477,8 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
                     .shipmentId(shipmentResult.getShipmentId())
                     .orderId(order.getOrderId())
                     .status("CREATED")
-                    .carrier("PENDING")
-                    .serviceLevel("STANDARD")
+                    .carrier(carrier)
+                    .serviceLevel(serviceLevel)
                     .build();
      }
 
@@ -558,6 +596,29 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
 
           orderStatuses.put(shipment.getOrderId(), "SHIPPED");
           ordersShipped++;
+     }
+
+     /**
+      * Auto-ship all orders without HITL interaction.
+      * Used for AUTO_SHIP fulfillment mode.
+      * Sets default carrier, generates labels, and confirms shipments automatically.
+      */
+     private void autoShipAllOrders() {
+          for (ShipmentStateDTO shipment : shipmentStates.values()) {
+               if ("SHIPPED".equals(shipment.getStatus())) {
+                    continue; // Already shipped
+               }
+
+               // Set default carrier and service level
+               shipment.setCarrier(defaultCarrier != null ? defaultCarrier : "USPS");
+               shipment.setServiceLevel(defaultServiceLevel != null ? defaultServiceLevel : "GROUND");
+
+               // Generate label
+               generateLabelForShipment(shipment.getShipmentId());
+
+               // Confirm shipment (this also marks order as shipped in OMS)
+               confirmShipment(shipment.getShipmentId());
+          }
      }
 
      private WaveExecutionResult handleCancellation(WaveExecutionRequest request) {

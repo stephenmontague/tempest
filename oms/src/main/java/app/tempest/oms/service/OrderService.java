@@ -145,13 +145,9 @@ public class OrderService {
 
           return orderRepository.findByIdAndTenantId(orderId, tenantId)
                     .map(order -> {
-                         if (order.getWorkflowId() != null) {
-                              try {
-                                   orderWorkflowClient.signalCancelOrder(order.getWorkflowId(), reason);
-                              } catch (Exception e) {
-                                   log.warn("Failed to signal workflow cancellation: {}", e.getMessage());
-                              }
-                         }
+                         // Note: Order cancellation during wave execution should be done via WMS wave
+                         // cancellation
+                         // This only updates the order status in OMS
                          order.setStatus("CANCELLED");
                          orderRepository.save(order);
                          return true;
@@ -168,27 +164,17 @@ public class OrderService {
                          if (order.getWorkflowId() == null) {
                               return Optional.empty();
                          }
-                         return getWorkflowStatus(order.getWorkflowId());
+                         // Only query OrderIntakeWorkflow status
+                         // Fulfillment status should be queried via WMS wave status
+                         try {
+                              String status = orderWorkflowClient.getOrderIntakeStatus(order.getWorkflowId());
+                              return Optional.of(new WorkflowStatus(status, null, null));
+                         } catch (Exception e) {
+                              log.warn("Could not get workflow status for {}: {}", order.getWorkflowId(),
+                                        e.getMessage());
+                              return Optional.empty();
+                         }
                     });
-     }
-
-     private Optional<WorkflowStatus> getWorkflowStatus(String workflowId) {
-          try {
-               // Try OrderFulfillmentWorkflow first
-               String status = orderWorkflowClient.getFulfillmentStatus(workflowId);
-               String currentStep = orderWorkflowClient.getCurrentStep(workflowId);
-               String blockingReason = orderWorkflowClient.getBlockingReason(workflowId);
-               return Optional.of(new WorkflowStatus(status, currentStep, blockingReason));
-          } catch (Exception e) {
-               // Fall back to OrderIntakeWorkflow
-               try {
-                    String status = orderWorkflowClient.getOrderIntakeStatus(workflowId);
-                    return Optional.of(new WorkflowStatus(status, null, null));
-               } catch (Exception e2) {
-                    log.warn("Could not get workflow status for {}: {}", workflowId, e2.getMessage());
-                    return Optional.empty();
-               }
-          }
      }
 
      public record WorkflowStatus(String status, String currentStep, String blockingReason) {
@@ -198,7 +184,7 @@ public class OrderService {
       * Update the status of an order.
       * Used by Temporal activities to transition order status.
       *
-      * @param orderId the order ID
+      * @param orderId   the order ID
       * @param newStatus the new status
       */
      @Transactional

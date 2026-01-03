@@ -464,7 +464,6 @@ graph LR
 
     subgraph oms_worker [OMS Worker]
         OMS_WF1[OrderIntakeWorkflow]
-        OMS_WF2[OrderFulfillmentWorkflow]
         OMS_A1[ValidateOrderActivity]
         OMS_A2[CreateOrderActivity]
         OMS_A3[MarkOrderAwaitingWaveActivity]
@@ -515,9 +514,7 @@ worker.registerActivitiesImplementations(
 // oms/src/main/java/app/tempest/oms/config/TemporalWorkerConfig.java
 Worker worker = factory.newWorker(TaskQueues.OMS);
 
-worker.registerWorkflowImplementationTypes(
-    OrderIntakeWorkflowImpl.class,
-    OrderFulfillmentWorkflowImpl.class);
+worker.registerWorkflowImplementationTypes(OrderIntakeWorkflowImpl.class);
 worker.registerActivitiesImplementations(
     validateOrderActivity,
     createOrderActivity,
