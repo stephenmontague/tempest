@@ -1,7 +1,10 @@
 import { MainLayout } from "@/components/layout";
 import { PageHeader } from "@/components/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { requireSession } from "@/lib/auth/session";
+import Link from "next/link";
+import { Workflow } from "lucide-react";
 
 export default async function SettingsPage() {
   const session = await requireSession();
@@ -59,6 +62,27 @@ export default async function SettingsPage() {
                   <span className="text-muted-foreground">No roles assigned</span>
                 )}
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Demo & Tools</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-3">
+              <Link href="/settings/random-dag-demo">
+                <Button variant="outline" className="w-full justify-start" size="lg">
+                  <Workflow className="h-5 w-5 mr-3" />
+                  <div className="flex flex-col items-start">
+                    <div className="font-semibold">Random DAG Demo</div>
+                    <div className="text-xs text-muted-foreground font-normal">
+                      Interactive DAG editor - reorder workflow steps and execute with Temporal
+                    </div>
+                  </div>
+                </Button>
+              </Link>
             </div>
           </CardContent>
         </Card>

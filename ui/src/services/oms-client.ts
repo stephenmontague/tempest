@@ -79,6 +79,21 @@ export interface WorkflowStatus {
 }
 
 /**
+ * Request to start RandomDAGWorkflow.
+ */
+export interface StartRandomDAGRequest {
+  steps: string[];
+}
+
+/**
+ * Response from starting RandomDAGWorkflow.
+ */
+export interface StartRandomDAGResponse {
+  workflowId: string;
+  temporalUiUrl: string;
+}
+
+/**
  * OMS (Order Management System) service client.
  * Used server-side only - never expose to browser.
  */
@@ -154,6 +169,20 @@ export class OmsClient extends BaseServiceClient {
    */
   async getOrderCounts(): Promise<Record<string, number>> {
     return this.get<Record<string, number>>("/orders/counts");
+  }
+
+  /**
+   * Start a RandomDAGWorkflow with the specified step order.
+   */
+  async startRandomDAGWorkflow(request: StartRandomDAGRequest): Promise<StartRandomDAGResponse> {
+    return this.post<StartRandomDAGResponse, StartRandomDAGRequest>("/api/demo/random-dag", request);
+  }
+
+  /**
+   * Get the status of a RandomDAGWorkflow.
+   */
+  async getRandomDAGWorkflowStatus(workflowId: string): Promise<WorkflowStatus> {
+    return this.get<WorkflowStatus>(`/api/demo/random-dag/${workflowId}/status`);
   }
 }
 

@@ -9,8 +9,10 @@ import app.tempest.oms.temporal.activities.impl.MarkOrderAwaitingWaveActivityImp
 import app.tempest.oms.temporal.activities.impl.MarkOrderReservedActivityImpl;
 import app.tempest.oms.temporal.activities.impl.MarkOrderShippedActivityImpl;
 import app.tempest.oms.temporal.activities.impl.OmsActivitiesImpl;
+import app.tempest.oms.temporal.activities.impl.RandomDAGActivitiesImpl;
 import app.tempest.oms.temporal.activities.impl.ValidateOrderActivityImpl;
 import app.tempest.oms.temporal.workflow.impl.OrderIntakeWorkflowImpl;
+import app.tempest.oms.temporal.workflow.impl.RandomDAGWorkflowImpl;
 import io.temporal.client.WorkflowClient;
 import io.temporal.worker.Worker;
 import io.temporal.worker.WorkerFactory;
@@ -28,7 +30,8 @@ public class TemporalWorkerConfig {
                MarkOrderAwaitingWaveActivityImpl markOrderAwaitingWaveActivity,
                MarkOrderReservedActivityImpl markOrderReservedActivity,
                MarkOrderShippedActivityImpl markOrderShippedActivity,
-               OmsActivitiesImpl omsActivities) {
+               OmsActivitiesImpl omsActivities,
+               RandomDAGActivitiesImpl randomDAGActivities) {
 
           WorkerFactory factory = WorkerFactory.newInstance(workflowClient);
 
@@ -36,7 +39,8 @@ public class TemporalWorkerConfig {
 
           // Register workflow implementations
           worker.registerWorkflowImplementationTypes(
-                    OrderIntakeWorkflowImpl.class);
+                    OrderIntakeWorkflowImpl.class,
+                    RandomDAGWorkflowImpl.class);
 
           // Register activity implementations (Spring-managed beans for DI)
           worker.registerActivitiesImplementations(
@@ -45,7 +49,8 @@ public class TemporalWorkerConfig {
                     markOrderAwaitingWaveActivity,
                     markOrderReservedActivity,
                     markOrderShippedActivity,
-                    omsActivities);  // Remote activities for cross-service calls
+                    omsActivities,  // Remote activities for cross-service calls
+                    randomDAGActivities);  // Demo activities
 
           log.info("Starting OMS Temporal worker on task queue: {}", TaskQueues.OMS);
           factory.start();
