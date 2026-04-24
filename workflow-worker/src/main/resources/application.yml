@@ -1,0 +1,14 @@
+spring:
+     application:
+          name: workflow-worker
+     main:
+          web-application-type: none
+
+# Temporal
+temporal:
+     namespace: ${TEMPORAL_NAMESPACE:default}
+     address: ${TEMPORAL_ADDRESS:localhost:7233}
+     api-key: ${TEMPORAL_API_KEY:}
+     client:
+          cert: ${TEMPORAL_CLIENT_CERT:}
+          key: ${TEMPORAL_CLIENT_KEY:}

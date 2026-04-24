@@ -1,4 +1,4 @@
-package app.tempest.wms.temporal.workflow.impl;
+package app.tempest.worker.workflow.impl;
 
 import java.time.Duration;
 import java.time.Instant;
