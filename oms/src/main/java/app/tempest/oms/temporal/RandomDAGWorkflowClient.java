@@ -7,7 +7,7 @@ import org.springframework.stereotype.Service;
 import app.tempest.common.dto.requests.RandomDAGWorkflowRequest;
 import app.tempest.common.dto.results.RandomDAGWorkflowResult;
 import app.tempest.common.temporal.TaskQueues;
-import app.tempest.oms.temporal.workflow.RandomDAGWorkflow;
+import app.tempest.common.temporal.workflows.RandomDAGWorkflow;
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowOptions;
 import lombok.RequiredArgsConstructor;

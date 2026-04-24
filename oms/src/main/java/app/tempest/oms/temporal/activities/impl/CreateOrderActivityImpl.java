@@ -11,7 +11,7 @@ import app.tempest.oms.entity.Order;
 import app.tempest.oms.entity.OrderLine;
 import app.tempest.oms.repository.OrderLineRepository;
 import app.tempest.oms.repository.OrderRepository;
-import app.tempest.oms.temporal.activities.CreateOrderActivity;
+import app.tempest.common.temporal.activities.oms.CreateOrderActivity;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 

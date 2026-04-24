@@ -7,8 +7,8 @@ import java.util.UUID;
 
 import app.tempest.common.dto.requests.RandomDAGWorkflowRequest;
 import app.tempest.common.dto.results.RandomDAGWorkflowResult;
-import app.tempest.oms.temporal.activities.RandomDAGActivities;
-import app.tempest.oms.temporal.workflow.RandomDAGWorkflow;
+import app.tempest.common.temporal.activities.oms.RandomDAGActivities;
+import app.tempest.common.temporal.workflows.RandomDAGWorkflow;
 import io.temporal.activity.ActivityOptions;
 import io.temporal.common.RetryOptions;
 import io.temporal.workflow.Workflow;

@@ -7,7 +7,7 @@ import app.tempest.common.dto.requests.MarkOrderAwaitingWaveRequest;
 import app.tempest.common.dto.results.MarkOrderAwaitingWaveResult;
 import app.tempest.oms.entity.Order;
 import app.tempest.oms.repository.OrderRepository;
-import app.tempest.oms.temporal.activities.MarkOrderAwaitingWaveActivity;
+import app.tempest.common.temporal.activities.oms.MarkOrderAwaitingWaveActivity;
 import io.temporal.failure.ApplicationFailure;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

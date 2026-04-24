@@ -4,7 +4,7 @@ import org.springframework.stereotype.Component;
 
 import app.tempest.common.dto.requests.MarkOrderReservedRequest;
 import app.tempest.common.dto.results.MarkOrderReservedResult;
-import app.tempest.oms.temporal.activities.MarkOrderReservedActivity;
+import app.tempest.common.temporal.activities.oms.MarkOrderReservedActivity;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j

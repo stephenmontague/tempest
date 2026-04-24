@@ -7,7 +7,7 @@ import org.springframework.stereotype.Service;
 import app.tempest.common.dto.requests.OrderIntakeWorkflowRequest;
 import app.tempest.common.dto.results.OrderIntakeWorkflowResult;
 import app.tempest.common.temporal.TaskQueues;
-import app.tempest.oms.temporal.workflow.OrderIntakeWorkflow;
+import app.tempest.common.temporal.workflows.OrderIntakeWorkflow;
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowOptions;
 import lombok.RequiredArgsConstructor;
