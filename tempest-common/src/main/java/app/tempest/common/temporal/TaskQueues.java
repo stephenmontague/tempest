@@ -1,9 +1,13 @@
 package app.tempest.common.temporal;
 
 /**
- * Temporal task queue names shared across all services.
- * Each service's worker polls its designated queue.
- * Workflows use these constants when scheduling remote activities.
+ * Temporal task queue names shared across all services and workers.
+ *
+ * Two task queues separate workflow execution from activity execution:
+ * - WORKFLOWS: Polled by the standalone workflow worker
+ * - ACTIVITIES: Polled by each service's activity worker
+ *
+ * This separation allows workflows and activities to scale independently.
  */
 public final class TaskQueues {
 
@@ -11,16 +15,10 @@ public final class TaskQueues {
         // Constants class - prevent instantiation
     }
 
-    /** Order Management System - workflows and order activities */
-    public static final String OMS = "oms-tasks";
+    /** Polled by the standalone workflow worker - handles all workflow execution */
+    public static final String WORKFLOWS = "tempest-workflows";
 
-    /** Inventory Management System - inventory activities */
-    public static final String IMS = "ims-tasks";
-
-    /** Warehouse Management System - picking/packing activities */
-    public static final String WMS = "wms-tasks";
-
-    /** Shipping Management System - shipment activities */
-    public static final String SMS = "sms-tasks";
+    /** Polled by each service's activity worker - handles all activity execution */
+    public static final String ACTIVITIES = "tempest-activities";
 }
 

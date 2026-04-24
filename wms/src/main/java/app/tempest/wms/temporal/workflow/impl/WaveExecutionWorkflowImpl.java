@@ -115,8 +115,9 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
      private String defaultCarrier;
      private String defaultServiceLevel;
 
-     // Default activity options with retry
+     // Default activity options with retry — all routed to the shared activities task queue
      private final ActivityOptions defaultActivityOptions = ActivityOptions.newBuilder()
+               .setTaskQueue(TaskQueues.ACTIVITIES)
                .setStartToCloseTimeout(Duration.ofSeconds(30))
                .setRetryOptions(RetryOptions.newBuilder()
                          .setMaximumAttempts(5)
@@ -125,21 +126,17 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
                          .build())
                .build();
 
-     // IMS Activities (on ims-tasks queue)
+     // IMS Activities
      private final ImsActivities imsActivities = Workflow.newActivityStub(
                ImsActivities.class,
-               ActivityOptions.newBuilder(defaultActivityOptions)
-                         .setTaskQueue(TaskQueues.IMS)
-                         .build());
+               defaultActivityOptions);
 
-     // OMS Activities (on oms-tasks queue)
+     // OMS Activities
      private final OmsActivities omsActivities = Workflow.newActivityStub(
                OmsActivities.class,
-               ActivityOptions.newBuilder(defaultActivityOptions)
-                         .setTaskQueue(TaskQueues.OMS)
-                         .build());
+               defaultActivityOptions);
 
-     // WMS Activities (local - same task queue as workflow)
+     // WMS Activities
      private final WmsActivities wmsActivities = Workflow.newActivityStub(
                WmsActivities.class,
                defaultActivityOptions);
@@ -149,22 +146,20 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
                UpdateWaveStatusActivity.class,
                defaultActivityOptions);
 
-     // SMS Activities (on sms-tasks queue)
+     // SMS Activities
      private final SmsActivities smsActivities = Workflow.newActivityStub(
                SmsActivities.class,
-               ActivityOptions.newBuilder(defaultActivityOptions)
-                         .setTaskQueue(TaskQueues.SMS)
-                         .build());
+               defaultActivityOptions);
 
      // Per-carrier rate fetching activities with higher retry count for FedEx demo
      private final ActivityOptions rateActivityOptions = ActivityOptions.newBuilder()
+               .setTaskQueue(TaskQueues.ACTIVITIES)
                .setStartToCloseTimeout(Duration.ofSeconds(30))
                .setRetryOptions(RetryOptions.newBuilder()
                          .setMaximumAttempts(10) // Allow up to 10 attempts for FedEx failures
                          .setInitialInterval(Duration.ofSeconds(1))
                          .setBackoffCoefficient(1.5)
                          .build())
-               .setTaskQueue(TaskQueues.SMS)
                .build();
 
      private final FetchUSPSRatesActivity uspsRatesActivity = Workflow.newActivityStub(

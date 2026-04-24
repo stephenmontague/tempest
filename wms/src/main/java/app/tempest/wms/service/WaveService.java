@@ -156,7 +156,7 @@ public class WaveService {
                     WaveExecutionWorkflow.class,
                     WorkflowOptions.newBuilder()
                               .setWorkflowId(workflowId)
-                              .setTaskQueue(TaskQueues.WMS)
+                              .setTaskQueue(TaskQueues.WORKFLOWS)
                               .build());
 
           WorkflowClient.start(workflow::execute, workflowRequest);

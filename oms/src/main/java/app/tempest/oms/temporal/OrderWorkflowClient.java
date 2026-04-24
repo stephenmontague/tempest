@@ -32,7 +32,7 @@ public class OrderWorkflowClient {
           OrderIntakeWorkflow workflow = workflowClient.newWorkflowStub(
                     OrderIntakeWorkflow.class,
                     WorkflowOptions.newBuilder()
-                              .setTaskQueue(TaskQueues.OMS)
+                              .setTaskQueue(TaskQueues.WORKFLOWS)
                               .setWorkflowId(workflowId)
                               .setWorkflowExecutionTimeout(Duration.ofMinutes(10))
                               .build());
@@ -50,7 +50,7 @@ public class OrderWorkflowClient {
           OrderIntakeWorkflow workflow = workflowClient.newWorkflowStub(
                     OrderIntakeWorkflow.class,
                     WorkflowOptions.newBuilder()
-                              .setTaskQueue(TaskQueues.OMS)
+                              .setTaskQueue(TaskQueues.WORKFLOWS)
                               .setWorkflowId(workflowId)
                               .setWorkflowExecutionTimeout(Duration.ofMinutes(10))
                               .build());

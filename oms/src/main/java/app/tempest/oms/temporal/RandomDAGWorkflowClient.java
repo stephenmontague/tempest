@@ -38,7 +38,7 @@ public class RandomDAGWorkflowClient {
                 RandomDAGWorkflow workflow = workflowClient.newWorkflowStub(
                                 RandomDAGWorkflow.class,
                                 WorkflowOptions.newBuilder()
-                                                .setTaskQueue(TaskQueues.OMS)
+                                                .setTaskQueue(TaskQueues.WORKFLOWS)
                                                 .setWorkflowId(workflowId)
                                                 .setWorkflowExecutionTimeout(Duration.ofMinutes(10))
                                                 .build());
@@ -64,7 +64,7 @@ public class RandomDAGWorkflowClient {
                 RandomDAGWorkflow workflow = workflowClient.newWorkflowStub(
                                 RandomDAGWorkflow.class,
                                 WorkflowOptions.newBuilder()
-                                                .setTaskQueue(TaskQueues.OMS)
+                                                .setTaskQueue(TaskQueues.WORKFLOWS)
                                                 .setWorkflowId(workflowId)
                                                 .setWorkflowExecutionTimeout(Duration.ofMinutes(10))
                                                 .build());
