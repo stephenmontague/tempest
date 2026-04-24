@@ -1,5 +1,6 @@
 package app.tempest.oms.config;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -11,8 +12,6 @@ import app.tempest.oms.temporal.activities.impl.MarkOrderShippedActivityImpl;
 import app.tempest.oms.temporal.activities.impl.OmsActivitiesImpl;
 import app.tempest.oms.temporal.activities.impl.RandomDAGActivitiesImpl;
 import app.tempest.oms.temporal.activities.impl.ValidateOrderActivityImpl;
-import app.tempest.oms.temporal.workflow.impl.OrderIntakeWorkflowImpl;
-import app.tempest.oms.temporal.workflow.impl.RandomDAGWorkflowImpl;
 import io.temporal.client.WorkflowClient;
 import io.temporal.worker.Worker;
 import io.temporal.worker.WorkerFactory;
@@ -23,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 public class TemporalWorkerConfig {
 
      @Bean
+     @ConditionalOnProperty(name = "temporal.worker.enabled", havingValue = "true", matchIfMissing = true)
      public WorkerFactory workerFactory(
                WorkflowClient workflowClient,
                ValidateOrderActivityImpl validateOrderActivity,
@@ -35,24 +35,19 @@ public class TemporalWorkerConfig {
 
           WorkerFactory factory = WorkerFactory.newInstance(workflowClient);
 
-          Worker worker = factory.newWorker(TaskQueues.OMS);
+          Worker worker = factory.newWorker(TaskQueues.ACTIVITIES);
 
-          // Register workflow implementations
-          worker.registerWorkflowImplementationTypes(
-                    OrderIntakeWorkflowImpl.class,
-                    RandomDAGWorkflowImpl.class);
-
-          // Register activity implementations (Spring-managed beans for DI)
+          // Register activity implementations only — workflows run on the standalone workflow worker
           worker.registerActivitiesImplementations(
                     validateOrderActivity,
                     createOrderActivity,
                     markOrderAwaitingWaveActivity,
                     markOrderReservedActivity,
                     markOrderShippedActivity,
-                    omsActivities,  // Remote activities for cross-service calls
-                    randomDAGActivities);  // Demo activities
+                    omsActivities,
+                    randomDAGActivities);
 
-          log.info("Starting OMS Temporal worker on task queue: {}", TaskQueues.OMS);
+          log.info("Starting OMS activity worker on task queue: {}", TaskQueues.ACTIVITIES);
           factory.start();
 
           return factory;

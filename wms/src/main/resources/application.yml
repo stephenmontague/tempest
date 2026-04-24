@@ -55,5 +55,4 @@ temporal:
           cert: ${TEMPORAL_CLIENT_CERT:}
           key: ${TEMPORAL_CLIENT_KEY:}
      worker:
-          task-queue: wms-task-queue
-          enabled: true
+          enabled: ${TEMPORAL_WORKER_ENABLED:true}
