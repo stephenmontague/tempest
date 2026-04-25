@@ -27,7 +27,7 @@ public class OrderIntakeWorkflowImpl implements OrderIntakeWorkflow {
      private final ValidateOrderActivity validateOrderActivity = Workflow.newActivityStub(
                ValidateOrderActivity.class,
                ActivityOptions.newBuilder()
-                         .setTaskQueue(TaskQueues.ACTIVITIES)
+                         .setTaskQueue(TaskQueues.OMS)
                          .setStartToCloseTimeout(Duration.ofSeconds(30))
                          .setRetryOptions(RetryOptions.newBuilder()
                                    .setMaximumAttempts(3)
@@ -37,7 +37,7 @@ public class OrderIntakeWorkflowImpl implements OrderIntakeWorkflow {
      private final CreateOrderActivity createOrderActivity = Workflow.newActivityStub(
                CreateOrderActivity.class,
                ActivityOptions.newBuilder()
-                         .setTaskQueue(TaskQueues.ACTIVITIES)
+                         .setTaskQueue(TaskQueues.OMS)
                          .setStartToCloseTimeout(Duration.ofSeconds(30))
                          .setRetryOptions(RetryOptions.newBuilder()
                                    .setMaximumAttempts(5)
@@ -49,7 +49,7 @@ public class OrderIntakeWorkflowImpl implements OrderIntakeWorkflow {
      private final MarkOrderAwaitingWaveActivity markOrderAwaitingWaveActivity = Workflow.newActivityStub(
                MarkOrderAwaitingWaveActivity.class,
                ActivityOptions.newBuilder()
-                         .setTaskQueue(TaskQueues.ACTIVITIES)
+                         .setTaskQueue(TaskQueues.OMS)
                          .setStartToCloseTimeout(Duration.ofSeconds(30))
                          .setRetryOptions(RetryOptions.newBuilder()
                                    .setMaximumAttempts(5)

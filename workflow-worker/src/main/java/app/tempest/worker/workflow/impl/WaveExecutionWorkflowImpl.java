@@ -115,45 +115,61 @@ public class WaveExecutionWorkflowImpl implements WaveExecutionWorkflow {
      private String defaultCarrier;
      private String defaultServiceLevel;
 
-     // Default activity options with retry — all routed to the shared activities task queue
-     private final ActivityOptions defaultActivityOptions = ActivityOptions.newBuilder()
-               .setTaskQueue(TaskQueues.ACTIVITIES)
-               .setStartToCloseTimeout(Duration.ofSeconds(30))
-               .setRetryOptions(RetryOptions.newBuilder()
-                         .setMaximumAttempts(5)
-                         .setInitialInterval(Duration.ofSeconds(1))
-                         .setBackoffCoefficient(2.0)
-                         .build())
+     // Default retry options shared across activity stubs
+     private final RetryOptions defaultRetryOptions = RetryOptions.newBuilder()
+               .setMaximumAttempts(5)
+               .setInitialInterval(Duration.ofSeconds(1))
+               .setBackoffCoefficient(2.0)
                .build();
 
-     // IMS Activities
+     // IMS Activities (on ims-activities queue)
      private final ImsActivities imsActivities = Workflow.newActivityStub(
                ImsActivities.class,
-               defaultActivityOptions);
+               ActivityOptions.newBuilder()
+                         .setTaskQueue(TaskQueues.IMS)
+                         .setStartToCloseTimeout(Duration.ofSeconds(30))
+                         .setRetryOptions(defaultRetryOptions)
+                         .build());
 
-     // OMS Activities
+     // OMS Activities (on oms-activities queue)
      private final OmsActivities omsActivities = Workflow.newActivityStub(
                OmsActivities.class,
-               defaultActivityOptions);
+               ActivityOptions.newBuilder()
+                         .setTaskQueue(TaskQueues.OMS)
+                         .setStartToCloseTimeout(Duration.ofSeconds(30))
+                         .setRetryOptions(defaultRetryOptions)
+                         .build());
 
-     // WMS Activities
+     // WMS Activities (on wms-activities queue)
      private final WmsActivities wmsActivities = Workflow.newActivityStub(
                WmsActivities.class,
-               defaultActivityOptions);
+               ActivityOptions.newBuilder()
+                         .setTaskQueue(TaskQueues.WMS)
+                         .setStartToCloseTimeout(Duration.ofSeconds(30))
+                         .setRetryOptions(defaultRetryOptions)
+                         .build());
 
      // WMS Activity to update wave status in DB
      private final UpdateWaveStatusActivity updateWaveStatusActivity = Workflow.newActivityStub(
                UpdateWaveStatusActivity.class,
-               defaultActivityOptions);
+               ActivityOptions.newBuilder()
+                         .setTaskQueue(TaskQueues.WMS)
+                         .setStartToCloseTimeout(Duration.ofSeconds(30))
+                         .setRetryOptions(defaultRetryOptions)
+                         .build());
 
-     // SMS Activities
+     // SMS Activities (on sms-activities queue)
      private final SmsActivities smsActivities = Workflow.newActivityStub(
                SmsActivities.class,
-               defaultActivityOptions);
+               ActivityOptions.newBuilder()
+                         .setTaskQueue(TaskQueues.SMS)
+                         .setStartToCloseTimeout(Duration.ofSeconds(30))
+                         .setRetryOptions(defaultRetryOptions)
+                         .build());
 
      // Per-carrier rate fetching activities with higher retry count for FedEx demo
      private final ActivityOptions rateActivityOptions = ActivityOptions.newBuilder()
-               .setTaskQueue(TaskQueues.ACTIVITIES)
+               .setTaskQueue(TaskQueues.SMS)
                .setStartToCloseTimeout(Duration.ofSeconds(30))
                .setRetryOptions(RetryOptions.newBuilder()
                          .setMaximumAttempts(10) // Allow up to 10 attempts for FedEx failures

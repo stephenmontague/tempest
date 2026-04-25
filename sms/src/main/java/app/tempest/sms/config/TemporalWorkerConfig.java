@@ -29,7 +29,7 @@ public class TemporalWorkerConfig {
 
         WorkerFactory factory = WorkerFactory.newInstance(workflowClient);
 
-        Worker worker = factory.newWorker(TaskQueues.ACTIVITIES);
+        Worker worker = factory.newWorker(TaskQueues.SMS);
 
         // Register SMS activities
         worker.registerActivitiesImplementations(
@@ -38,7 +38,7 @@ public class TemporalWorkerConfig {
                 fetchUPSRatesActivity,
                 fetchFedExRatesActivity);
 
-        log.info("Starting SMS activity worker on task queue: {}", TaskQueues.ACTIVITIES);
+        log.info("Starting SMS activity worker on task queue: {}", TaskQueues.SMS);
         factory.start();
 
         return factory;

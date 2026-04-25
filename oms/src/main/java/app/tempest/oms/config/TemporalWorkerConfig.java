@@ -35,7 +35,7 @@ public class TemporalWorkerConfig {
 
           WorkerFactory factory = WorkerFactory.newInstance(workflowClient);
 
-          Worker worker = factory.newWorker(TaskQueues.ACTIVITIES);
+          Worker worker = factory.newWorker(TaskQueues.OMS);
 
           // Register activity implementations only — workflows run on the standalone workflow worker
           worker.registerActivitiesImplementations(
@@ -47,7 +47,7 @@ public class TemporalWorkerConfig {
                     omsActivities,
                     randomDAGActivities);
 
-          log.info("Starting OMS activity worker on task queue: {}", TaskQueues.ACTIVITIES);
+          log.info("Starting OMS activity worker on task queue: {}", TaskQueues.OMS);
           factory.start();
 
           return factory;

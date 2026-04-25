@@ -27,6 +27,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: tempest-postgres
+    command: postgres -c max_connections=300
     environment:
       POSTGRES_USER: tempest
       POSTGRES_PASSWORD: tempest
@@ -58,7 +59,6 @@ services:
       - POSTGRES_USER=tempest
       - POSTGRES_PWD=tempest
       - POSTGRES_SEEDS=postgres
-      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,7 +83,7 @@ services:
     restart: "no"
 
   temporal-admin-tools:
-    image: temporalio/admin-tools:1.24.2
+    image: temporalio/admin-tools:latest
     container_name: tempest-temporal-admin
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
@@ -94,9 +94,9 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        sleep 5
-        tctl --address temporal:7233 namespace describe tempest || \
-        tctl --address temporal:7233 namespace register tempest --retention 1d
+        sleep 10
+        temporal operator namespace describe tempest --address temporal:7233 || \
+        temporal operator namespace create tempest --address temporal:7233 --retention 30d
         echo "Namespace 'tempest' is ready"
         # Keep container running for debugging if needed
         tail -f /dev/null

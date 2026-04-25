@@ -34,7 +34,7 @@ public class RandomDAGWorkflowImpl implements RandomDAGWorkflow {
         private final RandomDAGActivities activities = Workflow.newActivityStub(
                         RandomDAGActivities.class,
                         ActivityOptions.newBuilder()
-                                        .setTaskQueue(TaskQueues.ACTIVITIES)
+                                        .setTaskQueue(TaskQueues.OMS)
                                         .setStartToCloseTimeout(Duration.ofSeconds(30))
                                         .setRetryOptions(RetryOptions.newBuilder()
                                                         .setMaximumAttempts(3)

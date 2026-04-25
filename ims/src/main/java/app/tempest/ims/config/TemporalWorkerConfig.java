@@ -23,12 +23,12 @@ public class TemporalWorkerConfig {
 
         WorkerFactory factory = WorkerFactory.newInstance(workflowClient);
 
-        Worker worker = factory.newWorker(TaskQueues.ACTIVITIES);
+        Worker worker = factory.newWorker(TaskQueues.IMS);
 
         // Register IMS activities
         worker.registerActivitiesImplementations(imsActivities);
 
-        log.info("Starting IMS activity worker on task queue: {}", TaskQueues.ACTIVITIES);
+        log.info("Starting IMS activity worker on task queue: {}", TaskQueues.IMS);
         factory.start();
 
         return factory;

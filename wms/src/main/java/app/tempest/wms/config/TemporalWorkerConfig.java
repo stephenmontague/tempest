@@ -25,14 +25,14 @@ public class TemporalWorkerConfig {
 
         WorkerFactory factory = WorkerFactory.newInstance(workflowClient);
 
-        Worker worker = factory.newWorker(TaskQueues.ACTIVITIES);
+        Worker worker = factory.newWorker(TaskQueues.WMS);
 
         // Register activity implementations only — workflows run on the standalone workflow worker
         worker.registerActivitiesImplementations(
                 wmsActivities,
                 updateWaveStatusActivity);
 
-        log.info("Starting WMS activity worker on task queue: {}", TaskQueues.ACTIVITIES);
+        log.info("Starting WMS activity worker on task queue: {}", TaskQueues.WMS);
         factory.start();
 
         return factory;
