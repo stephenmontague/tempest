@@ -1,4 +1,4 @@
-package app.tempest.common.temporal.activities.wms;
+package app.tempest.wms.temporal.activities;
 
 import app.tempest.common.dto.requests.UpdateWaveStatusRequest;
 import app.tempest.common.dto.results.UpdateWaveStatusResult;
@@ -15,10 +15,11 @@ public interface UpdateWaveStatusActivity {
 
      /**
       * Update the wave status in the database.
-      *
+      * 
       * @param request the update request
       * @return the result of the update
       */
      @ActivityMethod
      UpdateWaveStatusResult updateStatus(UpdateWaveStatusRequest request);
 }
+

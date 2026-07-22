@@ -1,4 +1,4 @@
-package app.tempest.common.temporal.activities.oms;
+package app.tempest.oms.temporal.activities;
 
 import app.tempest.common.dto.requests.MarkOrderAwaitingWaveRequest;
 import app.tempest.common.dto.results.MarkOrderAwaitingWaveResult;

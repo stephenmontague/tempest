@@ -1,4 +1,4 @@
-package app.tempest.worker.workflow.impl;
+package app.tempest.oms.temporal.workflow.impl;
 
 import java.time.Duration;
 
@@ -8,11 +8,10 @@ import app.tempest.common.dto.requests.OrderIntakeWorkflowRequest;
 import app.tempest.common.dto.requests.ValidateOrderRequest;
 import app.tempest.common.dto.results.CreateOrderResult;
 import app.tempest.common.dto.results.OrderIntakeWorkflowResult;
-import app.tempest.common.temporal.TaskQueues;
-import app.tempest.common.temporal.activities.oms.CreateOrderActivity;
-import app.tempest.common.temporal.activities.oms.MarkOrderAwaitingWaveActivity;
-import app.tempest.common.temporal.activities.oms.ValidateOrderActivity;
-import app.tempest.common.temporal.workflows.OrderIntakeWorkflow;
+import app.tempest.oms.temporal.activities.CreateOrderActivity;
+import app.tempest.oms.temporal.activities.MarkOrderAwaitingWaveActivity;
+import app.tempest.oms.temporal.activities.ValidateOrderActivity;
+import app.tempest.oms.temporal.workflow.OrderIntakeWorkflow;
 import io.temporal.activity.ActivityOptions;
 import io.temporal.common.RetryOptions;
 import io.temporal.workflow.Workflow;
@@ -23,11 +22,10 @@ public class OrderIntakeWorkflowImpl implements OrderIntakeWorkflow {
      private String status = "RECEIVED";
      private Long orderId;
 
-     // Activity stubs - configured with retry policies and routed to the activities task queue
+     // Activity stubs - configured with retry policies
      private final ValidateOrderActivity validateOrderActivity = Workflow.newActivityStub(
                ValidateOrderActivity.class,
                ActivityOptions.newBuilder()
-                         .setTaskQueue(TaskQueues.OMS)
                          .setStartToCloseTimeout(Duration.ofSeconds(30))
                          .setRetryOptions(RetryOptions.newBuilder()
                                    .setMaximumAttempts(3)
@@ -37,7 +35,6 @@ public class OrderIntakeWorkflowImpl implements OrderIntakeWorkflow {
      private final CreateOrderActivity createOrderActivity = Workflow.newActivityStub(
                CreateOrderActivity.class,
                ActivityOptions.newBuilder()
-                         .setTaskQueue(TaskQueues.OMS)
                          .setStartToCloseTimeout(Duration.ofSeconds(30))
                          .setRetryOptions(RetryOptions.newBuilder()
                                    .setMaximumAttempts(5)
@@ -49,7 +46,6 @@ public class OrderIntakeWorkflowImpl implements OrderIntakeWorkflow {
      private final MarkOrderAwaitingWaveActivity markOrderAwaitingWaveActivity = Workflow.newActivityStub(
                MarkOrderAwaitingWaveActivity.class,
                ActivityOptions.newBuilder()
-                         .setTaskQueue(TaskQueues.OMS)
                          .setStartToCloseTimeout(Duration.ofSeconds(30))
                          .setRetryOptions(RetryOptions.newBuilder()
                                    .setMaximumAttempts(5)

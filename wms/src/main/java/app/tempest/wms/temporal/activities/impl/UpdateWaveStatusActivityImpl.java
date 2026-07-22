@@ -10,7 +10,7 @@ import app.tempest.common.dto.results.UpdateWaveStatusResult;
 import app.tempest.wms.entity.Wave;
 import app.tempest.wms.entity.Wave.WaveStatus;
 import app.tempest.wms.repo.WaveRepository;
-import app.tempest.common.temporal.activities.wms.UpdateWaveStatusActivity;
+import app.tempest.wms.temporal.activities.UpdateWaveStatusActivity;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 

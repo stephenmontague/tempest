@@ -55,4 +55,5 @@ temporal:
           cert: ${TEMPORAL_CLIENT_CERT:}
           key: ${TEMPORAL_CLIENT_KEY:}
      worker:
-          enabled: ${TEMPORAL_WORKER_ENABLED:true}
+          task-queue: sms-task-queue
+          enabled: true

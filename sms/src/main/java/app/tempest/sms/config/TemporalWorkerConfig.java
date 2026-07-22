@@ -1,6 +1,5 @@
 package app.tempest.sms.config;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -19,7 +18,6 @@ import lombok.extern.slf4j.Slf4j;
 public class TemporalWorkerConfig {
 
     @Bean
-    @ConditionalOnProperty(name = "temporal.worker.enabled", havingValue = "true", matchIfMissing = true)
     public WorkerFactory workerFactory(
             WorkflowClient workflowClient,
             SmsActivitiesImpl smsActivities,
@@ -31,14 +29,15 @@ public class TemporalWorkerConfig {
 
         Worker worker = factory.newWorker(TaskQueues.SMS);
 
-        // Register SMS activities
+        // Register consolidated SMS activities for cross-service calls
+        // Plus carrier-specific rate activities (internal use)
         worker.registerActivitiesImplementations(
                 smsActivities,
                 fetchUSPSRatesActivity,
                 fetchUPSRatesActivity,
                 fetchFedExRatesActivity);
 
-        log.info("Starting SMS activity worker on task queue: {}", TaskQueues.SMS);
+        log.info("Starting SMS Temporal worker on task queue: {}", TaskQueues.SMS);
         factory.start();
 
         return factory;

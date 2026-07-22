@@ -1,4 +1,4 @@
-package app.tempest.common.temporal.activities.oms;
+package app.tempest.oms.temporal.activities;
 
 import io.temporal.activity.ActivityInterface;
 import io.temporal.activity.ActivityMethod;
@@ -12,7 +12,7 @@ public interface RandomDAGActivities {
 
     /**
      * Simulate inventory allocation.
-     *
+     * 
      * @param demoId The demo execution ID for correlation
      */
     @ActivityMethod
@@ -20,7 +20,7 @@ public interface RandomDAGActivities {
 
     /**
      * Simulate sending an email notification.
-     *
+     * 
      * @param demoId The demo execution ID for correlation
      */
     @ActivityMethod
@@ -28,7 +28,7 @@ public interface RandomDAGActivities {
 
     /**
      * Simulate printing a shipping label.
-     *
+     * 
      * @param demoId The demo execution ID for correlation
      */
     @ActivityMethod
@@ -36,7 +36,7 @@ public interface RandomDAGActivities {
 
     /**
      * Simulate shipping confirmation.
-     *
+     * 
      * @param demoId The demo execution ID for correlation
      */
     @ActivityMethod

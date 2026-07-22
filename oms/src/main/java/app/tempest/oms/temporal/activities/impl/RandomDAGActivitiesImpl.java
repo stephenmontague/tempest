@@ -2,7 +2,7 @@ package app.tempest.oms.temporal.activities.impl;
 
 import org.springframework.stereotype.Component;
 
-import app.tempest.common.temporal.activities.oms.RandomDAGActivities;
+import app.tempest.oms.temporal.activities.RandomDAGActivities;
 import lombok.extern.slf4j.Slf4j;
 
 /**

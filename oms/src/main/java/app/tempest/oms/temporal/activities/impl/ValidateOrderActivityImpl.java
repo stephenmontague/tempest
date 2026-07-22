@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 
 import app.tempest.common.dto.requests.ValidateOrderRequest;
 import app.tempest.common.dto.results.ValidateOrderResult;
-import app.tempest.common.temporal.activities.oms.ValidateOrderActivity;
+import app.tempest.oms.temporal.activities.ValidateOrderActivity;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j

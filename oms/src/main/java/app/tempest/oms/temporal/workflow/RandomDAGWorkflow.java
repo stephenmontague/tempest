@@ -1,4 +1,4 @@
-package app.tempest.common.temporal.workflows;
+package app.tempest.oms.temporal.workflow;
 
 import app.tempest.common.dto.requests.RandomDAGWorkflowRequest;
 import app.tempest.common.dto.results.RandomDAGWorkflowResult;
@@ -8,7 +8,7 @@ import io.temporal.workflow.WorkflowMethod;
 
 /**
  * Workflow for demonstrating dynamic DAG execution.
- *
+ * 
  * This workflow accepts an arbitrary ordering of steps (ALLOCATE, EMAIL,
  * PRINT_LABEL, SHIP)
  * and executes them in that order. This demonstrates Temporal's ability to
@@ -20,7 +20,7 @@ public interface RandomDAGWorkflow {
 
     /**
      * Execute the workflow with the provided step order.
-     *
+     * 
      * @param request The workflow request containing the ordered list of steps
      * @return The result of workflow execution
      */
@@ -29,7 +29,7 @@ public interface RandomDAGWorkflow {
 
     /**
      * Query the current status of the workflow.
-     *
+     * 
      * @return The current status
      */
     @QueryMethod
@@ -37,7 +37,7 @@ public interface RandomDAGWorkflow {
 
     /**
      * Query the current step being executed.
-     *
+     * 
      * @return The current step name, or null if not started
      */
     @QueryMethod

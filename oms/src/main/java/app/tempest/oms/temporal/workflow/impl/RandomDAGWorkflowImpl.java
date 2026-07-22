@@ -1,14 +1,14 @@
-package app.tempest.worker.workflow.impl;
+package app.tempest.oms.temporal.workflow.impl;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import app.tempest.common.dto.requests.RandomDAGWorkflowRequest;
 import app.tempest.common.dto.results.RandomDAGWorkflowResult;
-import app.tempest.common.temporal.TaskQueues;
-import app.tempest.common.temporal.activities.oms.RandomDAGActivities;
-import app.tempest.common.temporal.workflows.RandomDAGWorkflow;
+import app.tempest.oms.temporal.activities.RandomDAGActivities;
+import app.tempest.oms.temporal.workflow.RandomDAGWorkflow;
 import io.temporal.activity.ActivityOptions;
 import io.temporal.common.RetryOptions;
 import io.temporal.workflow.Workflow;
@@ -30,11 +30,10 @@ public class RandomDAGWorkflowImpl implements RandomDAGWorkflow {
         private final List<String> completedSteps = new ArrayList<>();
         private String demoId;
 
-        // Activity stub with retry configuration, routed to the activities task queue
+        // Activity stub with retry configuration
         private final RandomDAGActivities activities = Workflow.newActivityStub(
                         RandomDAGActivities.class,
                         ActivityOptions.newBuilder()
-                                        .setTaskQueue(TaskQueues.OMS)
                                         .setStartToCloseTimeout(Duration.ofSeconds(30))
                                         .setRetryOptions(RetryOptions.newBuilder()
                                                         .setMaximumAttempts(3)
@@ -46,7 +45,7 @@ public class RandomDAGWorkflowImpl implements RandomDAGWorkflow {
         @Override
         public RandomDAGWorkflowResult execute(RandomDAGWorkflowRequest request) {
                 // Generate a unique demo ID for this execution
-                demoId = "demo-" + Workflow.randomUUID().toString().substring(0, 8);
+                demoId = "demo-" + UUID.randomUUID().toString().substring(0, 8);
 
                 status = "RUNNING";
 

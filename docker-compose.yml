@@ -4,12 +4,6 @@
 # This setup includes everything needed to run the full Tempest WMS demo,
 # including a local Temporal cluster.
 #
-# Architecture:
-#   - Each service runs in two modes via the same JAR:
-#     1. API mode (TEMPORAL_WORKER_ENABLED=false) - serves REST endpoints
-#     2. Worker mode (WEB-APPLICATION-TYPE=none) - runs activity worker
-#   - A standalone workflow-worker handles all workflow execution
-#
 # Usage:
 #   ./demo.sh up      - Start all services
 #   ./demo.sh kill X  - Kill a specific service (ims, oms, wms, sms)
@@ -27,7 +21,6 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: tempest-postgres
-    command: postgres -c max_connections=300
     environment:
       POSTGRES_USER: tempest
       POSTGRES_PASSWORD: tempest
@@ -59,6 +52,7 @@ services:
       - POSTGRES_USER=tempest
       - POSTGRES_PWD=tempest
       - POSTGRES_SEEDS=postgres
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,7 +77,7 @@ services:
     restart: "no"
 
   temporal-admin-tools:
-    image: temporalio/admin-tools:latest
+    image: temporalio/admin-tools:1.24.2
     container_name: tempest-temporal-admin
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
@@ -94,34 +88,16 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        sleep 10
-        temporal operator namespace describe tempest --address temporal:7233 || \
-        temporal operator namespace create tempest --address temporal:7233 --retention 30d
+        sleep 5
+        tctl --address temporal:7233 namespace describe tempest || \
+        tctl --address temporal:7233 namespace register tempest --retention 1d
         echo "Namespace 'tempest' is ready"
         # Keep container running for debugging if needed
         tail -f /dev/null
     restart: "no"
 
   # ---------------------------------------------------------------------------
-  # Temporal Workers
-  # ---------------------------------------------------------------------------
-
-  # Standalone workflow worker - executes all workflow logic, no DB needed
-  workflow-worker:
-    build:
-      context: ./workflow-worker
-      dockerfile: Dockerfile
-    container_name: tempest-workflow-worker
-    environment:
-      TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_NAMESPACE: tempest
-    depends_on:
-      temporal:
-        condition: service_healthy
-    restart: "no"
-
-  # ---------------------------------------------------------------------------
-  # Backend Services - API mode (worker disabled)
+  # Backend Services
   # ---------------------------------------------------------------------------
 
   ims:
@@ -138,7 +114,6 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_ims
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_NAMESPACE: tempest
-      TEMPORAL_WORKER_ENABLED: "false"
     depends_on:
       postgres:
         condition: service_healthy
@@ -164,7 +139,6 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_oms
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_NAMESPACE: tempest
-      TEMPORAL_WORKER_ENABLED: "false"
     depends_on:
       postgres:
         condition: service_healthy
@@ -190,10 +164,10 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_wms
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_NAMESPACE: tempest
-      TEMPORAL_WORKER_ENABLED: "false"
     depends_on:
       postgres:
         condition: service_healthy
+
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8083/actuator/health"]
       interval: 10s
@@ -216,7 +190,6 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_sms
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_NAMESPACE: tempest
-      TEMPORAL_WORKER_ENABLED: "false"
     depends_on:
       postgres:
         condition: service_healthy
@@ -226,94 +199,6 @@ services:
       timeout: 5s
       retries: 10
       start_period: 60s
-    restart: "no"
-
-  # ---------------------------------------------------------------------------
-  # Backend Services - Worker mode (web disabled, activity worker enabled)
-  # ---------------------------------------------------------------------------
-
-  ims-worker:
-    build:
-      context: ./ims
-      dockerfile: Dockerfile
-    container_name: tempest-ims-worker
-    environment:
-      SPRING_PROFILES_ACTIVE: docker
-      DB_USERNAME: tempest
-      DB_PASSWORD: tempest
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_ims
-      TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_NAMESPACE: tempest
-      TEMPORAL_WORKER_ENABLED: "true"
-      SPRING_MAIN_WEB-APPLICATION-TYPE: none
-    depends_on:
-      postgres:
-        condition: service_healthy
-      temporal:
-        condition: service_healthy
-    restart: "no"
-
-  oms-worker:
-    build:
-      context: ./oms
-      dockerfile: Dockerfile
-    container_name: tempest-oms-worker
-    environment:
-      SPRING_PROFILES_ACTIVE: docker
-      DB_USERNAME: tempest
-      DB_PASSWORD: tempest
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_oms
-      TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_NAMESPACE: tempest
-      TEMPORAL_WORKER_ENABLED: "true"
-      SPRING_MAIN_WEB-APPLICATION-TYPE: none
-    depends_on:
-      postgres:
-        condition: service_healthy
-      temporal:
-        condition: service_healthy
-    restart: "no"
-
-  wms-worker:
-    build:
-      context: ./wms
-      dockerfile: Dockerfile
-    container_name: tempest-wms-worker
-    environment:
-      SPRING_PROFILES_ACTIVE: docker
-      DB_USERNAME: tempest
-      DB_PASSWORD: tempest
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_wms
-      TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_NAMESPACE: tempest
-      TEMPORAL_WORKER_ENABLED: "true"
-      SPRING_MAIN_WEB-APPLICATION-TYPE: none
-    depends_on:
-      postgres:
-        condition: service_healthy
-      temporal:
-        condition: service_healthy
-    restart: "no"
-
-  sms-worker:
-    build:
-      context: ./sms
-      dockerfile: Dockerfile
-    container_name: tempest-sms-worker
-    environment:
-      SPRING_PROFILES_ACTIVE: docker
-      DB_USERNAME: tempest
-      DB_PASSWORD: tempest
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_sms
-      TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_NAMESPACE: tempest
-      TEMPORAL_WORKER_ENABLED: "true"
-      SPRING_MAIN_WEB-APPLICATION-TYPE: none
-    depends_on:
-      postgres:
-        condition: service_healthy
-      temporal:
-        condition: service_healthy
     restart: "no"
 
   # ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ import org.springframework.stereotype.Component;
 
 import app.tempest.common.dto.requests.MarkOrderShippedRequest;
 import app.tempest.common.dto.results.MarkOrderShippedResult;
-import app.tempest.common.temporal.activities.oms.MarkOrderShippedActivity;
+import app.tempest.oms.temporal.activities.MarkOrderShippedActivity;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j

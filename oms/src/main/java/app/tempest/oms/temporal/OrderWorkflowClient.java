@@ -7,7 +7,7 @@ import org.springframework.stereotype.Service;
 import app.tempest.common.dto.requests.OrderIntakeWorkflowRequest;
 import app.tempest.common.dto.results.OrderIntakeWorkflowResult;
 import app.tempest.common.temporal.TaskQueues;
-import app.tempest.common.temporal.workflows.OrderIntakeWorkflow;
+import app.tempest.oms.temporal.workflow.OrderIntakeWorkflow;
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowOptions;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +32,7 @@ public class OrderWorkflowClient {
           OrderIntakeWorkflow workflow = workflowClient.newWorkflowStub(
                     OrderIntakeWorkflow.class,
                     WorkflowOptions.newBuilder()
-                              .setTaskQueue(TaskQueues.WORKFLOWS)
+                              .setTaskQueue(TaskQueues.OMS)
                               .setWorkflowId(workflowId)
                               .setWorkflowExecutionTimeout(Duration.ofMinutes(10))
                               .build());
@@ -50,7 +50,7 @@ public class OrderWorkflowClient {
           OrderIntakeWorkflow workflow = workflowClient.newWorkflowStub(
                     OrderIntakeWorkflow.class,
                     WorkflowOptions.newBuilder()
-                              .setTaskQueue(TaskQueues.WORKFLOWS)
+                              .setTaskQueue(TaskQueues.OMS)
                               .setWorkflowId(workflowId)
                               .setWorkflowExecutionTimeout(Duration.ofMinutes(10))
                               .build());

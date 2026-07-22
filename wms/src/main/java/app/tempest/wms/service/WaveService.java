@@ -27,7 +27,7 @@ import app.tempest.wms.dto.WorkflowStatusResponse;
 import app.tempest.wms.entity.Wave;
 import app.tempest.wms.entity.Wave.WaveStatus;
 import app.tempest.wms.repo.WaveRepository;
-import app.tempest.common.temporal.workflows.WaveExecutionWorkflow;
+import app.tempest.wms.temporal.workflow.WaveExecutionWorkflow;
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowOptions;
 import lombok.RequiredArgsConstructor;
@@ -156,7 +156,7 @@ public class WaveService {
                     WaveExecutionWorkflow.class,
                     WorkflowOptions.newBuilder()
                               .setWorkflowId(workflowId)
-                              .setTaskQueue(TaskQueues.WORKFLOWS)
+                              .setTaskQueue(TaskQueues.WMS)
                               .build());
 
           WorkflowClient.start(workflow::execute, workflowRequest);

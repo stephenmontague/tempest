@@ -1,4 +1,4 @@
-package app.tempest.common.temporal.workflows;
+package app.tempest.oms.temporal.workflow;
 
 import app.tempest.common.dto.requests.OrderIntakeWorkflowRequest;
 import app.tempest.common.dto.results.OrderIntakeWorkflowResult;

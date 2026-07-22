@@ -1,12 +1,12 @@
 package app.tempest.wms.config;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import app.tempest.common.temporal.TaskQueues;
 import app.tempest.wms.temporal.activities.impl.UpdateWaveStatusActivityImpl;
 import app.tempest.wms.temporal.activities.impl.WmsActivitiesImpl;
+import app.tempest.wms.temporal.workflow.impl.WaveExecutionWorkflowImpl;
 import io.temporal.client.WorkflowClient;
 import io.temporal.worker.Worker;
 import io.temporal.worker.WorkerFactory;
@@ -17,7 +17,6 @@ import lombok.extern.slf4j.Slf4j;
 public class TemporalWorkerConfig {
 
     @Bean
-    @ConditionalOnProperty(name = "temporal.worker.enabled", havingValue = "true", matchIfMissing = true)
     public WorkerFactory workerFactory(
             WorkflowClient workflowClient,
             WmsActivitiesImpl wmsActivities,
@@ -27,12 +26,16 @@ public class TemporalWorkerConfig {
 
         Worker worker = factory.newWorker(TaskQueues.WMS);
 
-        // Register activity implementations only — workflows run on the standalone workflow worker
+        // Register workflow implementations
+        worker.registerWorkflowImplementationTypes(WaveExecutionWorkflowImpl.class);
+
+        // Register consolidated WMS activities for cross-service calls
+        // Plus internal WMS activities
         worker.registerActivitiesImplementations(
                 wmsActivities,
                 updateWaveStatusActivity);
 
-        log.info("Starting WMS activity worker on task queue: {}", TaskQueues.WMS);
+        log.info("Starting WMS Temporal worker on task queue: {}", TaskQueues.WMS);
         factory.start();
 
         return factory;
