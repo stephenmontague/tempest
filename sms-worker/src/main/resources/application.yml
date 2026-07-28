@@ -1,0 +1,50 @@
+spring:
+     application:
+          name: sms-worker
+
+     # Single shared database (schema owned/migrated by tempest-api)
+     datasource:
+          url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/tempest}
+          username: ${DB_USERNAME}
+          password: ${DB_PASSWORD}
+          driver-class-name: org.postgresql.Driver
+
+     jpa:
+          hibernate:
+               ddl-auto: validate
+          show-sql: false
+          properties:
+               hibernate:
+                    dialect: org.hibernate.dialect.PostgreSQLDialect
+                    format_sql: false
+
+     # Workers do not migrate — tempest-api owns the schema.
+     flyway:
+          enabled: false
+
+server:
+     port: 8084
+
+management:
+     endpoints:
+          web:
+               exposure:
+                    include: health,info
+     endpoint:
+          health:
+               show-details: when-authorized
+     health:
+          db:
+               enabled: true
+
+# Temporal connection (external cluster). Auth:
+#   1. API Key: set TEMPORAL_API_KEY
+#   2. mTLS: set TEMPORAL_CLIENT_CERT + TEMPORAL_CLIENT_KEY
+#   3. Local dev: leave unset
+temporal:
+     namespace: ${TEMPORAL_NAMESPACE:tempest}
+     address: ${TEMPORAL_ADDRESS:localhost:7233}
+     api-key: ${TEMPORAL_API_KEY:}
+     client:
+          cert: ${TEMPORAL_CLIENT_CERT:}
+          key: ${TEMPORAL_CLIENT_KEY:}

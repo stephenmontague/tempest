@@ -1,26 +1,30 @@
 # =============================================================================
-# Tempest WMS - Docker Compose (Self-contained with Temporal)
+# Tempest - Docker Compose
 # =============================================================================
-# This setup includes everything needed to run the full Tempest WMS demo,
-# including a local Temporal cluster.
+# Runtime topology:
+#   postgres      - single shared 'tempest' database
+#   tempest-api   - one REST/CRUD API for all domains (owns Flyway migrations)
+#   *-worker      - four standalone Temporal workers (ims/oms/wms/sms), each on its
+#                   own task queue, connecting to an EXTERNAL Temporal cluster
+#   ui            - Next.js frontend + Temporal client (BFF)
+#
+# Temporal is NOT run here. Point the workers + UI at your own Temporal (1.31.1) on the
+# host via host.docker.internal:7233, with a 'tempest' namespace already registered.
 #
 # Usage:
-#   ./demo.sh up      - Start all services
-#   ./demo.sh kill X  - Kill a specific service (ims, oms, wms, sms)
-#   ./demo.sh start X - Restart a killed service
-#
-# For local development with an external Temporal cluster:
-#   Create a docker-compose.override.yml file to customize the setup.
+#   ./demo.sh up      - Build + start everything
+#   ./demo.sh kill X  - Kill a worker (ims, oms, wms, sms) to demo Temporal resilience
 # =============================================================================
 
 services:
   # ---------------------------------------------------------------------------
   # Infrastructure
   # ---------------------------------------------------------------------------
-
   postgres:
     image: postgres:16-alpine
     container_name: tempest-postgres
+    # One instance backs tempest-api + all four worker Hikari pools.
+    command: ["postgres", "-c", "max_connections=300"]
     environment:
       POSTGRES_USER: tempest
       POSTGRES_PASSWORD: tempest
@@ -29,7 +33,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U tempest"]
       interval: 5s
@@ -38,82 +41,20 @@ services:
     restart: "no"
 
   # ---------------------------------------------------------------------------
-  # Temporal Cluster (for workflow orchestration)
+  # Unified REST/CRUD API (all domains, single DB) — owns Flyway migrations
   # ---------------------------------------------------------------------------
-
-  temporal:
-    image: temporalio/auto-setup:1.24.2
-    container_name: tempest-temporal
-    ports:
-      - "7233:7233"
-    environment:
-      - DB=postgres12
-      - DB_PORT=5432
-      - POSTGRES_USER=tempest
-      - POSTGRES_PWD=tempest
-      - POSTGRES_SEEDS=postgres
-      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "tctl", "--address", "temporal:7233", "cluster", "health"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-    restart: "no"
-
-  temporal-ui:
-    image: temporalio/ui:2.26.2
-    container_name: tempest-temporal-ui
-    ports:
-      - "8080:8080"
-    environment:
-      - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_CORS_ORIGINS=http://localhost:3000,http://localhost:3001
-    depends_on:
-      - temporal
-    restart: "no"
-
-  temporal-admin-tools:
-    image: temporalio/admin-tools:1.24.2
-    container_name: tempest-temporal-admin
-    environment:
-      - TEMPORAL_ADDRESS=temporal:7233
-    depends_on:
-      temporal:
-        condition: service_healthy
-    # Create the tempest namespace on startup
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        sleep 5
-        tctl --address temporal:7233 namespace describe tempest || \
-        tctl --address temporal:7233 namespace register tempest --retention 1d
-        echo "Namespace 'tempest' is ready"
-        # Keep container running for debugging if needed
-        tail -f /dev/null
-    restart: "no"
-
-  # ---------------------------------------------------------------------------
-  # Backend Services
-  # ---------------------------------------------------------------------------
-
-  ims:
+  tempest-api:
     build:
-      context: ./ims
+      context: ./tempest-api
       dockerfile: Dockerfile
-    container_name: tempest-ims
+    container_name: tempest-api
     ports:
       - "8081:8081"
     environment:
       SPRING_PROFILES_ACTIVE: docker
       DB_USERNAME: tempest
       DB_PASSWORD: tempest
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_ims
-      TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_NAMESPACE: tempest
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest
     depends_on:
       postgres:
         condition: service_healthy
@@ -125,86 +66,98 @@ services:
       start_period: 60s
     restart: "no"
 
-  oms:
+  # ---------------------------------------------------------------------------
+  # Temporal workers (standalone apps). No published ports. Connect to the
+  # external Temporal cluster on the host. Wait for tempest-api (schema) first.
+  # ---------------------------------------------------------------------------
+  ims-worker:
     build:
-      context: ./oms
+      context: ./ims-worker
       dockerfile: Dockerfile
-    container_name: tempest-oms
-    ports:
-      - "8082:8082"
+    container_name: tempest-ims-worker
     environment:
       SPRING_PROFILES_ACTIVE: docker
       DB_USERNAME: tempest
       DB_PASSWORD: tempest
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_oms
-      TEMPORAL_ADDRESS: temporal:7233
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest
+      TEMPORAL_ADDRESS: host.docker.internal:7233
       TEMPORAL_NAMESPACE: tempest
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8082/actuator/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 60s
+      tempest-api:
+        condition: service_healthy
     restart: "no"
 
-  wms:
+  oms-worker:
     build:
-      context: ./wms
+      context: ./oms-worker
       dockerfile: Dockerfile
-    container_name: tempest-wms
-    ports:
-      - "8083:8083"
+    container_name: tempest-oms-worker
     environment:
       SPRING_PROFILES_ACTIVE: docker
       DB_USERNAME: tempest
       DB_PASSWORD: tempest
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_wms
-      TEMPORAL_ADDRESS: temporal:7233
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest
+      TEMPORAL_ADDRESS: host.docker.internal:7233
       TEMPORAL_NAMESPACE: tempest
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
-
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8083/actuator/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 60s
+      tempest-api:
+        condition: service_healthy
     restart: "no"
 
-  sms:
+  wms-worker:
     build:
-      context: ./sms
+      context: ./wms-worker
       dockerfile: Dockerfile
-    container_name: tempest-sms
-    ports:
-      - "8084:8084"
+    container_name: tempest-wms-worker
     environment:
       SPRING_PROFILES_ACTIVE: docker
       DB_USERNAME: tempest
       DB_PASSWORD: tempest
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest_sms
-      TEMPORAL_ADDRESS: temporal:7233
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest
+      TEMPORAL_ADDRESS: host.docker.internal:7233
       TEMPORAL_NAMESPACE: tempest
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8084/actuator/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 60s
+      tempest-api:
+        condition: service_healthy
+    restart: "no"
+
+  sms-worker:
+    build:
+      context: ./sms-worker
+      dockerfile: Dockerfile
+    container_name: tempest-sms-worker
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_USERNAME: tempest
+      DB_PASSWORD: tempest
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tempest
+      TEMPORAL_ADDRESS: host.docker.internal:7233
+      TEMPORAL_NAMESPACE: tempest
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      tempest-api:
+        condition: service_healthy
     restart: "no"
 
   # ---------------------------------------------------------------------------
-  # Frontend
+  # Frontend + Temporal client (BFF). Calls the single API for CRUD; talks to
+  # the external Temporal directly for workflow start/signal/query.
   # ---------------------------------------------------------------------------
-
   ui:
     build:
       context: ./ui
@@ -216,15 +169,19 @@ services:
       NODE_ENV: production
       AUTH_DEV_BYPASS: "true"
       AUTH_SECRET: dev-secret-for-docker-demo
-      OMS_URL: http://oms:8082
-      IMS_URL: http://ims:8081
-      WMS_URL: http://wms:8083
-      SMS_URL: http://sms:8084
+      # All CRUD goes to the single API (paths are distinct per domain)
+      OMS_URL: http://tempest-api:8081
+      IMS_URL: http://tempest-api:8081
+      WMS_URL: http://tempest-api:8081
+      SMS_URL: http://tempest-api:8081
+      # Temporal client -> external cluster; deep links -> your Temporal UI
+      TEMPORAL_ADDRESS: host.docker.internal:7233
+      TEMPORAL_NAMESPACE: tempest
+      TEMPORAL_UI_BASE_URL: http://localhost:8080
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
-      - ims
-      - oms
-      - wms
-      - sms
+      - tempest-api
     restart: "no"
 
 volumes:

@@ -1,7 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+
+import { getTenantId } from "@/lib/auth/session";
 import { getWmsClient } from "@/services/wms-client";
+import {
+     queryWave,
+     signalWave,
+     startWaveExecution,
+     updateWave,
+     WaveExecutionInput,
+} from "@/services/wave-workflow";
 
 export interface CreateWaveRequest {
      facilityId: number;
@@ -48,7 +57,7 @@ export interface ActionResult<T = void> {
 }
 
 /**
- * Create a new wave with the specified orders.
+ * Create a new wave with the specified orders. Pure CRUD (no workflow).
  */
 export async function createWave(
      request: CreateWaveRequest
@@ -79,7 +88,10 @@ export async function createWave(
 
 /**
  * Release a wave for execution.
- * This starts the WaveExecutionWorkflow.
+ *
+ * The UI is the Temporal client: WMS performs the CRUD transition (CREATED -> RELEASED
+ * and records the deterministic workflow id), then we start the WaveExecutionWorkflow
+ * directly via the Temporal client with the input assembled from the wave + request.
  */
 export async function releaseWave(
      waveId: number,
@@ -87,8 +99,33 @@ export async function releaseWave(
 ): Promise<ActionResult<{ workflowId: string }>> {
      try {
           const client = getWmsClient();
+          const tenantId = await getTenantId();
 
-          const wave = await client.releaseWave(waveId, request);
+          // Read wave (facilityId, waveNumber) then perform the CRUD release.
+          const wave = await client.getWave(waveId);
+          await client.releaseWave(waveId, request);
+
+          const input: WaveExecutionInput = {
+               tenantId,
+               waveId,
+               facilityId: wave.facilityId,
+               waveNumber: wave.waveNumber,
+               orders: request.orders.map((o) => ({
+                    orderId: o.orderId,
+                    externalOrderId: o.externalOrderId,
+                    orderLines: o.orderLines.map((l) => ({
+                         orderLineId: l.orderLineId,
+                         sku: l.sku,
+                         quantity: l.quantity,
+                    })),
+                    shipTo: o.shipTo ?? null,
+               })),
+               fulfillmentMode: request.fulfillmentMode ?? "STANDARD",
+               defaultCarrier: request.defaultCarrier,
+               defaultServiceLevel: request.defaultServiceLevel,
+          };
+
+          const workflowId = await startWaveExecution(input);
 
           revalidatePath("/waves");
           revalidatePath(`/waves/${waveId}`);
@@ -96,9 +133,7 @@ export async function releaseWave(
 
           return {
                success: true,
-               data: {
-                    workflowId: wave.workflowId ?? `wave-execution-${waveId}`,
-               },
+               data: { workflowId },
           };
      } catch (error) {
           console.error("Failed to release wave:", error);
@@ -114,9 +149,7 @@ export async function releaseWave(
  */
 export async function signalPicksComplete(waveId: number): Promise<ActionResult> {
      try {
-          const client = getWmsClient();
-
-          await client.signalPicksCompleted(waveId);
+          await signalWave(waveId, "allPicksCompleted");
 
           revalidatePath(`/waves/${waveId}`);
           revalidatePath("/waves");
@@ -136,9 +169,7 @@ export async function signalPicksComplete(waveId: number): Promise<ActionResult>
  */
 export async function signalPacksComplete(waveId: number): Promise<ActionResult> {
      try {
-          const client = getWmsClient();
-
-          await client.signalPacksCompleted(waveId);
+          await signalWave(waveId, "allPacksCompleted");
 
           revalidatePath(`/waves/${waveId}`);
           revalidatePath("/waves");
@@ -155,11 +186,18 @@ export async function signalPacksComplete(waveId: number): Promise<ActionResult>
 }
 
 /**
- * Cancel a wave.
+ * Cancel a wave: signal the workflow to compensate (if running), then CRUD-cancel in WMS.
  */
 export async function cancelWave(waveId: number, reason: string): Promise<ActionResult> {
      try {
           const client = getWmsClient();
+
+          // Best-effort cancel signal (the workflow may not be running yet).
+          try {
+               await signalWave(waveId, "cancelWave", reason);
+          } catch (signalError) {
+               console.warn("cancelWave signal skipped:", signalError);
+          }
 
           await client.cancelWave(waveId, reason);
 
@@ -178,19 +216,30 @@ export async function cancelWave(waveId: number, reason: string): Promise<Action
 }
 
 /**
- * Get the workflow status for a wave.
+ * Get the workflow status for a wave: DB status (WMS) merged with live workflow queries.
  */
 export async function getWaveWorkflowStatus(
      waveId: number
 ): Promise<ActionResult<{ status: string; currentStep?: string; blockingReason?: string | null }>> {
      try {
           const client = getWmsClient();
+          const wave = await client.getWave(waveId);
 
-          const status = await client.getWaveWorkflowStatus(waveId);
+          let currentStep: string | undefined;
+          let blockingReason: string | null | undefined;
+
+          if (wave.workflowId) {
+               try {
+                    currentStep = await queryWave<string>(waveId, "getCurrentStep");
+                    blockingReason = await queryWave<string | null>(waveId, "getBlockingReason");
+               } catch {
+                    // Workflow completed / not found - fall back to DB status only.
+               }
+          }
 
           return {
                success: true,
-               data: status,
+               data: { status: wave.status, currentStep, blockingReason },
           };
      } catch (error) {
           console.error("Failed to get wave workflow status:", error);
@@ -215,17 +264,15 @@ export interface ShipmentState {
 }
 
 /**
- * Get shipment states for a wave.
+ * Get shipment states for a wave (workflow query).
  */
 export async function getShipmentStates(waveId: number): Promise<ActionResult<Record<number, ShipmentState>>> {
      try {
-          const client = getWmsClient();
-
-          const response = await client.getShipmentStates(waveId);
+          const shipments = await queryWave<Record<number, ShipmentState>>(waveId, "getShipmentStates");
 
           return {
                success: true,
-               data: response.shipments,
+               data: shipments ?? {},
           };
      } catch (error) {
           console.error("Failed to get shipment states:", error);
@@ -244,17 +291,24 @@ export async function signalRateSelected(
      shipmentId: number,
      carrier: string,
      serviceLevel: string
-): Promise<ActionResult> {
+): Promise<ActionResult<ShipmentState>> {
      try {
-          const client = getWmsClient();
-
-          await client.signalRateSelected(waveId, shipmentId, carrier, serviceLevel);
+          // Request-response via Temporal Update: the workflow validates the request and
+          // returns the updated shipment state synchronously (positional args match the
+          // Java @UpdateMethod rateSelected(Long, String, String)).
+          const updated = await updateWave<ShipmentState>(
+               waveId,
+               "rateSelected",
+               shipmentId,
+               carrier,
+               serviceLevel
+          );
 
           revalidatePath(`/waves/${waveId}`);
 
-          return { success: true };
+          return { success: true, data: updated };
      } catch (error) {
-          console.error("Failed to signal rate selected:", error);
+          console.error("Failed to select rate:", error);
           return {
                success: false,
                error: error instanceof Error ? error.message : "Failed to select rate",
@@ -267,9 +321,7 @@ export async function signalRateSelected(
  */
 export async function signalPrintLabel(waveId: number, shipmentId: number): Promise<ActionResult> {
      try {
-          const client = getWmsClient();
-
-          await client.signalPrintLabel(waveId, shipmentId);
+          await signalWave(waveId, "printLabel", shipmentId);
 
           revalidatePath(`/waves/${waveId}`);
 
@@ -288,9 +340,7 @@ export async function signalPrintLabel(waveId: number, shipmentId: number): Prom
  */
 export async function signalShipmentConfirmed(waveId: number, shipmentId: number): Promise<ActionResult> {
      try {
-          const client = getWmsClient();
-
-          await client.signalShipmentConfirmed(waveId, shipmentId);
+          await signalWave(waveId, "shipmentConfirmed", shipmentId);
 
           revalidatePath(`/waves/${waveId}`);
           revalidatePath("/shipments");
@@ -329,14 +379,11 @@ export interface FetchedRatesState {
 }
 
 /**
- * Signal to fetch rates for a shipment.
- * This triggers parallel rate fetching from USPS, UPS, and FedEx.
+ * Signal to fetch rates for a shipment (parallel USPS/UPS/FedEx fetch in the workflow).
  */
 export async function signalFetchRates(waveId: number, shipmentId: number): Promise<ActionResult> {
      try {
-          const client = getWmsClient();
-
-          await client.signalFetchRates(waveId, shipmentId);
+          await signalWave(waveId, "fetchRates", shipmentId);
 
           return { success: true };
      } catch (error) {
@@ -349,16 +396,14 @@ export async function signalFetchRates(waveId: number, shipmentId: number): Prom
 }
 
 /**
- * Get fetched rates for a shipment.
+ * Get fetched rates for a shipment (workflow query).
  */
 export async function getFetchedRates(
      waveId: number,
      shipmentId: number
 ): Promise<ActionResult<FetchedRatesState>> {
      try {
-          const client = getWmsClient();
-
-          const rates = await client.getFetchedRates(waveId, shipmentId);
+          const rates = await queryWave<FetchedRatesState>(waveId, "getFetchedRates", shipmentId);
 
           return {
                success: true,
