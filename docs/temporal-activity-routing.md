@@ -2,6 +2,13 @@
 
 This document explains how cross-service Temporal activities are organized and routed in the Tempest WMS system.
 
+> **Architecture note.** Workflows are now started/signalled/queried by the **Next.js UI**
+> (the single Temporal client, via `@temporalio/client`), and each service runs as a
+> separate **`-api`** (REST) and **`-worker`** (Temporal) deployable. The per-service
+> activity routing described below is **unchanged** — each worker still registers only its
+> own activities and polls its own task queue, which is what makes the "kill a service's
+> worker" resilience demo work.
+
 ## Architecture Diagram
 
 ```mermaid

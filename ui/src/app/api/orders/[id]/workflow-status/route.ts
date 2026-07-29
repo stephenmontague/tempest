@@ -7,45 +7,33 @@ interface RouteParams {
 
 /**
  * GET /api/orders/[id]/workflow-status
- * Get the workflow status for an order.
- * Used for polling to update UI in real-time.
+ * Returns the order's current lifecycle status.
+ *
+ * Order intake is a plain CRUD operation (not a Temporal workflow), so the
+ * "status" is simply the order row's status. Fulfillment progress is tracked
+ * separately via the WMS wave workflow.
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(_request: NextRequest, { params }: RouteParams) {
   try {
     const client = getOmsClient();
     const { id } = await params;
 
-    // The workflow ID is typically "order-intake-{externalOrderId}" or passed as query param
-    const searchParams = request.nextUrl.searchParams;
-    const workflowId = searchParams.get("workflowId");
-
-    if (!workflowId) {
-      // Try to get the order first and use its workflow ID
-      const orderId = parseInt(id, 10);
-      if (isNaN(orderId)) {
-        return NextResponse.json({ error: "Invalid order ID" }, { status: 400 });
-      }
-
-      const order = await client.getOrder(orderId);
-
-      if (!order.workflowId) {
-        return NextResponse.json({
-          status: order.status,
-          currentStep: null,
-          blockingReason: null,
-        });
-      }
-
-      const status = await client.getOrderWorkflowStatus(order.workflowId);
-      return NextResponse.json(status);
+    const orderId = parseInt(id, 10);
+    if (isNaN(orderId)) {
+      return NextResponse.json({ error: "Invalid order ID" }, { status: 400 });
     }
 
-    const status = await client.getOrderWorkflowStatus(workflowId);
-    return NextResponse.json(status);
+    const order = await client.getOrder(orderId);
+
+    return NextResponse.json({
+      status: order.status,
+      currentStep: null,
+      blockingReason: null,
+    });
   } catch (error) {
-    console.error("Failed to fetch workflow status:", error);
+    console.error("Failed to fetch order status:", error);
     return NextResponse.json(
-      { error: "Failed to fetch workflow status" },
+      { error: "Failed to fetch order status" },
       { status: 500 }
     );
   }

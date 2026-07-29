@@ -28,15 +28,21 @@ BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 # Service name mapping (short name -> container name)
+# CRUD is served by one app (tempest-api); each domain has a standalone Temporal worker.
+# The short name (ims/oms/wms/sms) targets the WORKER, so `./demo.sh kill ims` stalls
+# IMS's activities while the API stays up.
 typeset -A SERVICES
 SERVICES=(
-    ims "tempest-ims"
-    oms "tempest-oms"
-    wms "tempest-wms"
-    sms "tempest-sms"
+    ims "tempest-ims-worker"
+    oms "tempest-oms-worker"
+    wms "tempest-wms-worker"
+    sms "tempest-sms-worker"
+    ims-worker "tempest-ims-worker"
+    oms-worker "tempest-oms-worker"
+    wms-worker "tempest-wms-worker"
+    sms-worker "tempest-sms-worker"
+    api "tempest-api"
     ui "tempest-ui"
-    temporal "tempest-temporal"
-    temporal-ui "tempest-temporal-ui"
     postgres "tempest-postgres"
 )
 
@@ -67,7 +73,7 @@ print_usage() {
     echo -e "  ${RED}clean${NC}           Remove all containers and volumes"
     echo ""
     echo -e "${BOLD}Services:${NC}"
-    echo -e "  ims, oms, wms, sms, ui, temporal, temporal-ui, postgres"
+    echo -e "  ims, oms, wms, sms, api, ui, postgres"
     echo ""
     echo -e "${BOLD}Demo Examples:${NC}"
     echo -e "  ${YELLOW}# Start a wave workflow, then kill IMS to see Temporal retry${NC}"
@@ -101,11 +107,8 @@ cmd_up() {
     echo ""
     echo -e "Access points:"
     echo -e "  ${BLUE}UI:${NC}          http://localhost:3001"
-    echo -e "  ${BLUE}Temporal UI:${NC} http://localhost:8080"
-    echo -e "  ${BLUE}IMS API:${NC}     http://localhost:8081"
-    echo -e "  ${BLUE}OMS API:${NC}     http://localhost:8082"
-    echo -e "  ${BLUE}WMS API:${NC}     http://localhost:8083"
-    echo -e "  ${BLUE}SMS API:${NC}     http://localhost:8084"
+    echo -e "  ${BLUE}API:${NC}         http://localhost:8081  (all CRUD: /orders /items /api/waves /shipments)"
+    echo -e "  ${BLUE}Temporal UI:${NC} http://localhost:8080  (your external cluster)"
     echo ""
     echo -e "Run ${CYAN}./demo.sh status${NC} to check service health"
     echo ""
@@ -132,7 +135,7 @@ cmd_kill() {
     local container=$(get_container_name "$service")
     if [[ -z "$container" ]]; then
         echo -e "${RED}Error: Unknown service '$service'${NC}"
-        echo -e "Valid services: ims, oms, wms, sms, ui, temporal, temporal-ui, postgres"
+        echo -e "Valid services: ims, oms, wms, sms, api, ui, postgres"
         exit 1
     fi
 
@@ -162,7 +165,7 @@ cmd_start() {
     local container=$(get_container_name "$service")
     if [[ -z "$container" ]]; then
         echo -e "${RED}Error: Unknown service '$service'${NC}"
-        echo -e "Valid services: ims, oms, wms, sms, ui, temporal, temporal-ui, postgres"
+        echo -e "Valid services: ims, oms, wms, sms, api, ui, postgres"
         exit 1
     fi
 
@@ -229,7 +232,7 @@ cmd_status() {
     printf "%-15s %-20s %-10s\n" "SERVICE" "CONTAINER" "STATUS"
     printf "%-15s %-20s %-10s\n" "-------" "---------" "------"
     
-    for service in ims oms wms sms ui temporal temporal-ui postgres; do
+    for service in api ims oms wms sms ui postgres; do
         container="${SERVICES[$service]}"
         status=$(docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null || echo "not found")
         
@@ -253,7 +256,8 @@ cmd_status() {
     echo ""
     echo -e "Access points:"
     echo -e "  ${BLUE}UI:${NC}          http://localhost:3001"
-    echo -e "  ${BLUE}Temporal UI:${NC} http://localhost:8080"
+    echo -e "  ${BLUE}API:${NC}         http://localhost:8081"
+    echo -e "  ${BLUE}Temporal UI:${NC} http://localhost:8080  (your external cluster)"
     echo ""
 }
 

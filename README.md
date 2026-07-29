@@ -23,12 +23,42 @@ Tempest is built as a set of independently deployable services:
      Manages shipments, carrier integration, labels, and tracking.
 
 -    **Temporal**
-     Orchestrates long-running workflows such as order intake and fulfillment.
+     Orchestrates the long-running fulfillment workflow (wave execution) plus a Random DAG demo.
 
 -    **UI (Next.js)**
-     Provides a web interface and acts as a Backend-for-Frontend (BFF).
+     Provides a web interface and acts as a Backend-for-Frontend (BFF). It is also the
+     single **Temporal client**: server actions / route handlers use the Temporal
+     TypeScript SDK (`@temporalio/client`) to start workflows, send signals, and run
+     queries. All Temporal credentials stay server-side.
 
-Each service owns its own data and communicates with others via APIs and **Temporal Activities**, not direct database access.
+Domains communicate via **Temporal Activities**, not direct cross-domain database access.
+
+### Client, API, workers
+
+- The **UI is the only Temporal client** — no backend app starts workflows. It starts
+  them (and sends signals/queries/updates) via the Temporal TypeScript SDK, cross-language
+  against the Java workers by workflow-type name.
+- **`tempest-api`** is a single Spring Boot app that serves **all** CRUD (orders, items,
+  waves, shipments) against one shared `tempest` database. It runs no Temporal.
+- The **four workers** (`ims/oms/wms/sms-worker`) are standalone apps, each polling its own
+  task queue (`ims-tasks`, `oms-tasks`, `wms-tasks`, `sms-tasks`). Preserving per-service
+  queues means killing one worker stalls only that domain's activities (the resilience
+  demo) while the API stays up.
+- Shared code is split into libraries: `tempest-common` (DTOs, security, task queues,
+  activity interfaces), `tempest-domain` (entities, repositories, CRUD services), and
+  `tempest-temporal` (the Temporal client config — depended on by workers only).
+
+### Prerequisite: bring your own Temporal
+
+Temporal is **not** run by this compose stack. Run your own Temporal (tested with 1.31.1)
+on `localhost:7233` with a `tempest` namespace registered, e.g.:
+
+```bash
+temporal server start-dev --namespace tempest --ip 0.0.0.0
+```
+
+The containers reach it at `host.docker.internal:7233`; set the UI's `TEMPORAL_UI_BASE_URL`
+to your Temporal Web UI.
 
 ---
 
@@ -49,13 +79,11 @@ Each service owns its own data and communicates with others via APIs and **Tempo
 
 ## 🔁 Core Workflows
 
-The system currently focuses on two primary workflows:
+### Order Intake (CRUD — not a workflow)
 
-### Order Intake
-
--    Accepts an order submission
--    Validates and persists the order
--    Starts fulfillment orchestration
+Order intake is a single-service operation (validate → persist → mark `AWAITING_WAVE`),
+so it is a plain transactional `POST /orders` endpoint on OMS, **not** a Temporal
+workflow. Fulfillment orchestration is triggered later when a wave is released.
 
 ### Order Fulfillment
 
@@ -88,21 +116,20 @@ The easiest way to run Tempest is with the included demo script, which starts ev
 ```
 
 This starts:
--    PostgreSQL database
--    Temporal server + UI
--    All backend services (IMS, OMS, WMS, SMS)
+-    PostgreSQL database (single `tempest` DB)
+-    `tempest-api` (unified REST/CRUD API)
+-    Four Temporal workers (ims/oms/wms/sms)
 -    Next.js UI
+
+(Temporal itself is your own external cluster — see the prerequisite above.)
 
 **Access points:**
 
 | Service      | URL                      |
 |--------------|--------------------------|
-| UI           | http://localhost:3000    |
-| Temporal UI  | http://localhost:8080    |
-| IMS API      | http://localhost:8081    |
-| OMS API      | http://localhost:8082    |
-| WMS API      | http://localhost:8083    |
-| SMS API      | http://localhost:8084    |
+| UI           | http://localhost:3001    |
+| API (CRUD)   | http://localhost:8081    |
+| Temporal UI  | http://localhost:8080    (your external cluster) |
 
 **Useful commands:**
 
